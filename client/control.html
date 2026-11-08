@@ -52,6 +52,10 @@
         <button class="red" data-ev='{"type":"bleed","intensity":0.95,"pulsatile":true}'>Arterial (cystic a.)</button>
         <button data-ev='{"type":"bleed","intensity":0}'>Stop / suction</button>
       </div>
+      <div class="row">
+        <button class="amber" data-ev='{"type":"bile","intensity":0.5}'>Bile leak</button>
+        <button data-ev='{"type":"bile","intensity":0}'>Stop bile</button>
+      </div>
       <div class="row"><label>intensity</label><input id="bleedI" type="range" min="0" max="1" step="0.05" value="0.5"><label><input id="bleedP" type="checkbox" checked> pulsatile</label><button id="bleedGo" class="red">Send</button></div>
       <div class="row"><label>origin x</label><input id="bleedX" type="number" min="0" max="1" step="0.05" value="0.62"><label>y</label><input id="bleedY" type="number" min="0" max="1" step="0.05" value="0.38"></div>
     </section>
@@ -115,7 +119,13 @@
     <section>
       <h2>Laparoscope feed</h2>
       <div class="row">
-        <button class="green" data-ev='{"type":"source","mode":"auto"}'>Auto (live → demo)</button>
+        <button class="green" data-ev='{"type":"source","mode":"sim"}'>Virtual abdomen (sim)</button>
+        <button data-ev='{"type":"sim","action":"autopilot"}'>▶ Autopilot demo</button>
+        <button data-ev='{"type":"sim","action":"stop"}'>■ Stop autopilot</button>
+        <button data-ev='{"type":"sim","action":"reset"}'>Reset anatomy</button>
+      </div>
+      <div class="row">
+        <button data-ev='{"type":"source","mode":"auto"}'>Box camera (live → demo)</button>
         <button data-ev='{"type":"source","mode":"live"}'>Live camera only</button>
         <button class="amber" data-ev='{"type":"source","mode":"demo"}'>Demo clip</button>
       </div>

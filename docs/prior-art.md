@@ -1,5 +1,7 @@
 # Prior art and what we reused
 
+> Update (Nov 2026): the headset now shows a **virtual abdomen** instead of the box camera. The engine, anatomy, AI-restyling, splatting and instrument-tracking research for that is in [realism-options.md](realism-options.md). In short: iMSTK is discontinued, and the prototype uses three.js + XPBD with LapGym's MIT liver/gallbladder meshes, with SOFA on a PC as the upgrade path.
+
 This was a short survey, done before building, of what already exists for a WebXR lap-chole trainer that streams a physical box camera into a headset. The short version: no open-source project already does "physical box trainer + live laparoscope feed inside a VR OR". The pieces do exist, and we reused them.
 
 ## Reused directly
@@ -16,7 +18,7 @@ This was a short survey, done before building, of what already exists for a WebX
 
 ## Looked at, not used (and why)
 
-- **[LapGym / sofa_env](https://github.com/ScheiklP/sofa_env)** (ScheiklP, JMLR 2023). Gym environments for robot-assisted laparoscopy, built on the SOFA FEM engine. These are excellent for *simulated* tissue and RL, but our tissue is real (sponge, balloon, tubing). It is worth revisiting if we ever want a fully virtual mode or physics-driven bleeding.
+- **[LapGym / sofa_env](https://github.com/ScheiklP/sofa_env)** (ScheiklP, JMLR 2023). Gym environments for robot-assisted laparoscopy, built on the SOFA FEM engine. Its MIT-licensed liver and gallbladder meshes (visual + tetrahedral) are now **reused** for the virtual abdomen.
 - **[SOFA Framework](https://www.sofa-framework.org)**. A native C++/Python physics engine with no browser runtime. Same reason as above.
 - **SurRoL** (CUHK, dVRK-compatible RL platform on PyBullet). Robot-focused (da Vinci) and desktop Python, not relevant to a manual-instrument box trainer.
 - **Commercial lap trainers** (LapSim, LAP Mentor, VirtaMed). Closed and expensive, but useful as a reference for what complications to model: bleeding, smoke, vitals, and staff callouts.

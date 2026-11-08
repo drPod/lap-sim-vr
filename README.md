@@ -4,6 +4,8 @@ This is the VR half of a DIY laparoscopic cholecystectomy trainer. The surgeon w
 
 It's a plain WebXR web app (three.js), so there's nothing to install on the headset. You open a URL in the Quest Browser and press **Enter VR**.
 
+**New: virtual abdomen.** By default the OR monitor now shows a **simulated, deformable gallbladder field** (liver, gallbladder, cystic duct, CBD, cystic artery, peritoneum) instead of the box camera. Its instruments are driven by tool poses: from the box tracker later, and today from the mouse/keyboard, the Quest controllers, a scripted autopilot or `scripts/sim-tools.mjs`. The physical box becomes passive haptics. Clipping, cutting and cautery work, and errors (cutting an unclipped artery or duct, burning the CBD) automatically raise bleeding / bile / warning / vitals / voice events. See [docs/realism-options.md](docs/realism-options.md) for the engine research and the tracking hardware recommendation.
+
 ```
  box trainer                 laptop / Pi                         Quest 3
 ┌──────────────┐  CSI/USB  ┌────────────────────────────┐ WebRTC ┌──────────────────────┐
@@ -18,6 +20,8 @@ It's a plain WebXR web app (three.js), so there's nothing to install on the head
 | Page | What |
 |---|---|
 | `/` | The VR operating room. Open it on the Quest. |
+| `/?view=scope` | Just the laparoscope monitor image, full screen (desktop). Mouse/keyboard drive the tools |
+| `/abdomen.html` | Bare virtual abdomen (no OR, no overlays), with mouse/keyboard tool control |
 | `/control.html` | Director panel: bleed, smoke, warning, vitals, voices, feed source |
 | `/sender.html` | Laptop-webcam sender (publishes the webcam to MediaMTX over WebRTC/WHIP) |
 | `/api/events` | `POST` one event or an array of events (for agents and scripts) |
@@ -125,6 +129,51 @@ Your hands will be on the real instruments, so you can put the controllers down.
 
 Useful URL flags: `?source=demo|live|auto`, `?whep=<url>` (WHEP override), `?monitorWidth=1.8`, `?controllers=0`, `?emulate=1[&devui=1]` (IWER Quest-3 emulation on a desktop browser), `?clean=1` (hide the 2D status box).
 
+## Virtual abdomen (simulated laparoscopic field)
+
+`client/src/abdomen/`: three.js + a small XPBD soft-body solver (`xpbd.js`), running in the Quest browser.
+
+- **Anatomy** (`anatomy.js`): LapGym's MIT liver and gallbladder meshes (tetrahedral volumes are simulated; high-res surfaces are skinned to them). The cystic duct, CBD/CHD and pulsing cystic artery are XPBD rods. A tearable peritoneal veil covers Calot's triangle, and the scene also includes the duodenum, omentum and the peritoneal cavity. Wet-tissue look comes from procedural PBR (`materials.js`) lit by a coaxial scope light.
+- **Instruments** (`tools.js`): grasper, Maryland, L-hook (cautery), scissors and clip applier. A grasper grabs whatever tissue is between the jaws. The clip applier leaves titanium clips on the duct or artery. Scissors divide rods and the veil. The hook with energy burns (chars), dissects the veil, frees the gallbladder from its liver bed and emits smoke.
+- **Complications** (`index.js`): cutting the artery proximal to any clip produces a pulsatile bleed + warning + falling BP + attending voice. Cutting the duct without stump clips gives a bile leak. Cutting or burning the CBD gives a critical warning. They are sent as ordinary events, so the director panel, overlays and future agents see them.
+- **Rendering:** an HDR render target, shown on the OR monitor through the existing overlay shader (ACES tonemapping there). `?scopeAngle=30` gives a 30° scope; `?fat=0` removes the veil.
+
+### Tool-pose interface (for the box tracker)
+
+Every pose source produces the same per-instrument **fulcrum** pose: the instrument pivots through its trocar.
+
+```json
+{"type":"tools","t":1730000000000,"tools":[
+  {"id":"right","port":"epigastric","tool":"maryland","yaw":0.05,"pitch":-0.10,"roll":0.0,"depth":0.11,"jaw":0.8,"energy":false},
+  {"id":"left","port":"rsc","tool":"grasper","yaw":0.12,"pitch":0.02,"roll":0.3,"depth":0.09,"jaw":0.0},
+  {"id":"scope","port":"umbilical","tool":"scope","yaw":0,"pitch":0,"depth":0.065}
+]}
+```
+
+| field | meaning |
+|---|---|
+| `id` | `left`, `right`, `assist`, `scope` (any new id creates a new instrument) |
+| `port` | `umbilical`, `epigastric`, `rsc` (right subcostal), `raa` (right anterior axillary). Positions and nominal axes are in `PORTS` in `client/src/abdomen/tools.js`; match them to your lid |
+| `yaw`, `pitch` | rad, shaft rotation about the port's nominal axis (right/left, up/down) |
+| `roll` | rad, spin about the shaft |
+| `depth` | m, trocar pivot → jaw hinge |
+| `jaw` | 0 closed … 1 open |
+| `tool` | `grasper` \| `maryland` \| `hook` \| `scissors` \| `clipper` (switching = instrument exchange) |
+| `energy` | cautery pedal |
+
+There are three ways to send poses, with no state or logging involved, at 30–120 Hz:
+- **WebSocket** `/ws` (say `{"type":"hello","role":"hardware"}` first).
+- **UDP** datagrams to port **9870** (`TOOLS_UDP_PORT`). See `hardware/tracker_udp_example.py`.
+- `POST /api/events`.
+
+Simulated sources for testing:
+- `node scripts/sim-tools.mjs`: streams the scripted procedure like a tracker would (`--mode sweep`, `--udp host:9870`, `--url wss://…`, `--loop`).
+- **Mouse/keyboard** on `/?view=scope` or `/abdomen.html`: drag = pivot, wheel = depth, Q/E = roll, Space/right mouse = close jaws, F = energy, T = change instrument, 1/2/3/0 = select left/right/assistant/scope.
+- **Quest controllers** in VR, when no tracker is streaming: each controller is an instrument handle pivoting through a trocar on the virtual patient. Trigger closes the jaws, A/X = energy, B/Y = next instrument.
+- **Autopilot:** `?autopilot=1` (or the director panel ▶ button), which retracts, dissects, clips, divides the duct, then cuts the artery unclipped to show the complication chain. `?autopilot=bile` skips the duct clips instead.
+
+Recommended tracker hardware (instrumented trocars, about US$80–150 for three ports) is in [docs/realism-options.md](docs/realism-options.md#instrument-tracking-in-the-box).
+
 ## Event schema (for the director panel, AI agents and hardware)
 
 Connect a WebSocket to `wss://<host>/ws` and send `{"type":"hello","role":"agent","name":"anesthesia-bot"}`. Then send events as JSON. Every client receives every event, with `id`, `ts` (ms) and `from` (the sender's role) added. A new client first receives `{"type":"state", ...}` with the current scenario. Without a socket, `POST /api/events` with one event or an array:
@@ -141,10 +190,13 @@ The full JSON Schema is at `schema/events.schema.json` (also `GET /api/schema`).
 | `bleed` | `intensity` 0–1 (0 = stop/suction), `origin` `{x,y}` 0–1 screen coords (default `{0.62,0.38}`), `pulsatile` bool (default true) | Blood pools from the origin and runs down. Arterial bleeds spurt in time with the heart rate. High intensity darkens and reddens the whole view. |
 | `smoke` | `intensity` 0–1 (default 0.7), `durationMs` (default 8000, 0 = until cleared) | Cautery smoke / lens fog with heat shimmer and blur |
 | `warning` | `text`, `level` `critical`\|`warning`\|`info`, `durationMs` (0 = until cleared) | Banner across the top of the lap monitor. Critical blinks. |
-| `clear` | `target` `all`\|`bleed`\|`smoke`\|`warning`\|`captions` | Remove overlays |
+| `clear` | `target` `all`\|`bleed`\|`bile`\|`smoke`\|`warning`\|`captions` | Remove overlays |
 | `vitals` | any of `hr`, `bp` (`"120/80"`), `spo2`, `rr`, `etco2`, `temp`, `transitionMs` (default 3000) | Anaesthesia monitor values glide to the new targets. Alarms flash and sound when out of range (SpO2 <90, HR >120/<50, SBP <90/>180, EtCO2 >50). The pulse-ox beep pitch drops with SpO2. |
 | `say` | `speaker`, `text`, optional `audioUrl`, `voice` | Caption under the lap monitor, spoken with the browser's speech synthesis or by playing `audioUrl` (for agent-generated TTS) |
-| `source` | `mode` `live`\|`demo`\|`auto`, optional `whep` | Switch the laparoscope feed |
+| `source` | `mode` `sim`\|`live`\|`demo`\|`auto`, optional `whep` | Switch the laparoscope feed (`sim` = virtual abdomen, default) |
+| `bile` | `intensity` 0–1, `origin` `{x,y}` | Bile flooding the view (green-yellow) |
+| `tools` | `tools: [{id, port, tool, yaw, pitch, roll, depth, jaw, energy}]` | Instrument poses (see above). High rate, not logged |
+| `sim` | `action` `reset`\|`autopilot`\|`stop` (control), `clip`\|`cut` (sent by the sim, informational) | Virtual-abdomen control and feedback |
 | `actuator` | `device` (e.g. `pump.bleed`, `servo.liver`), `value`, `durationMs` | **Hook only.** Forwarded to `role: "hardware"` clients (future Pi pump/servo daemons). See `hardware/actuator_client.py`. |
 | `reset` | – | Clear everything and return vitals to baseline |
 
@@ -161,6 +213,8 @@ npm run mediamtx & ffmpeg -re -stream_loop -1 -i client/public/media/demo-lap-ch
   -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://localhost:8554/cam &
 node tests/live.mjs                     # verifies MediaMTX -> WHEP proxy -> VR monitor shows LIVE
 node tests/record-demo.mjs              # director panel + VR view side by side -> artifacts/demo.webm
+node tests/abdomen.mjs                  # virtual abdomen: VR monitor + scope views through the scripted procedure
+node tests/record-abdomen.mjs 15 4 25   # frame-by-frame capture of the procedure -> artifacts/abd-frames/
 ```
 
 For interactive testing on a desktop, open `/?emulate=1&devui=1` to get IWER's DevUI (move the emulated headset and controllers).
@@ -168,6 +222,8 @@ For interactive testing on a desktop, open `/?emulate=1&devui=1` to get IWER's D
 ## Project layout
 
 ```
+client/src/abdomen/  virtual abdomen: xpbd.js (solver), anatomy.js, materials.js, tools.js (fulcrum kinematics + instruments),
+                     index.js (interaction, complications, render), autopilot.js, keyboard.js, standalone.js
 client/            Vite root
   index.html       VR view          src/main.js      scene setup, events, XR
   control.html     director panel   src/or.js        OR set dressing (HDRI room, table, drapes, lights, tower, props)
@@ -189,6 +245,7 @@ Code: MIT. Third-party assets (all free to reuse):
 
 - **OR room / lighting:** ["Surgery" HDRI](https://polyhaven.com/a/surgery) by Oliksiy Yakovlyev, [Poly Haven](https://polyhaven.com), **CC0**. Tonemapped to JPG for the visible room; the 1k HDR is used for lighting.
 - **Props:** [Metal Stool 01](https://polyhaven.com/a/metal_stool_01) by Ulan Cabanilla, [Metal Trash Can](https://polyhaven.com/a/metal_trash_can) by GurJas Studios, Poly Haven, **CC0** (re-packed to GLB/WebP with glTF-Transform). Side table and keyboard from the [Furniture Kit](https://kenney.nl/assets/furniture-kit) by [Kenney](https://kenney.nl), **CC0**.
+- **Liver and gallbladder meshes (virtual abdomen):** from [LapGym / sofa_env](https://github.com/ScheiklP/sofa_env) (`grasp_lift_touch` scene) by Paul Maria Scheikl et al., **MIT**. Converted with `scripts/build-anatomy.mjs`. The ducts, artery, peritoneum, bowel and omentum are procedural.
 - **Demo laparoscope video:** Boer J, Boerma D, de Vries Reilingh T. *A gallbladder torsion presenting as acute cholecystitis in an elderly woman: a case report.* J Med Case Reports 2011;5:588. [Video via Wikimedia Commons](https://commons.wikimedia.org/wiki/File:A-gallbladder-torsion-presenting-as-acute-cholecystitis-in-an-elderly-woman-A-case-report-1752-1947-5-588-S1.ogv), **CC BY 2.0**. Cropped and transcoded to H.264.
 - **Libraries:** [three.js](https://threejs.org) (MIT), [IWER / @iwer/devui](https://github.com/meta-quest/immersive-web-emulation-runtime) (MIT, Meta), [MediaMTX](https://github.com/bluenviron/mediamtx) incl. vendored `reader.js`/`publisher.js` (MIT), [ws](https://github.com/websockets/ws), [Express](https://expressjs.com), [Ajv](https://ajv.js.org), [Vite](https://vite.dev).
 - The OR table, draped patient, surgical lights, laparoscopy tower, IV pole and back table are procedural (`client/src/or.js`).

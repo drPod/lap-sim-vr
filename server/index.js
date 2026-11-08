@@ -6,6 +6,7 @@
 //    a plain-HTTP MediaMTX on the LAN (avoids mixed-content blocking).
 //  - Serves the built client (dist/) in production.
 import fs from 'node:fs';
+import dgram from 'node:dgram';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
@@ -21,7 +22,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const USE_HTTPS = /^(1|true|yes)$/i.test(process.env.HTTPS || '');
 const MEDIAMTX_URL = (process.env.MEDIAMTX_URL || 'http://127.0.0.1:8889').replace(/\/$/, '');
 const CAMERA_PATH = process.env.CAMERA_PATH || 'cam';
-const DEFAULT_SOURCE = process.env.DEFAULT_SOURCE || 'auto'; // auto | live | demo
+const DEFAULT_SOURCE = process.env.DEFAULT_SOURCE || 'sim'; // sim | auto | live | demo
+const TOOLS_UDP_PORT = Number(process.env.TOOLS_UDP_PORT || 9870);
 
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'schema/events.schema.json'), 'utf8'));
 const validate = new Ajv({ allErrors: false, strict: false }).compile(schema);
@@ -30,6 +32,7 @@ const validate = new Ajv({ allErrors: false, strict: false }).compile(schema);
 const BASELINE_VITALS = { hr: 78, bp: '122/76', spo2: 99, rr: 12, etco2: 36, temp: 36.8 };
 const state = {
   bleed: { intensity: 0, origin: { x: 0.62, y: 0.38 }, pulsatile: true },
+  bile: { intensity: 0, origin: { x: 0.5, y: 0.5 } },
   smoke: { intensity: 0, until: 0 },
   warning: null,
   vitals: { ...BASELINE_VITALS },
@@ -42,6 +45,9 @@ function applyToState(ev) {
       state.bleed = { ...state.bleed, ...ev };
       delete state.bleed.type; delete state.bleed.id; delete state.bleed.ts; delete state.bleed.from;
       break;
+    case 'bile':
+      state.bile = { intensity: ev.intensity, origin: ev.origin || state.bile.origin };
+      break;
     case 'smoke': {
       const durationMs = ev.durationMs ?? 8000;
       state.smoke = { intensity: ev.intensity ?? 0.7, until: durationMs ? ev.ts + durationMs : 0 };
@@ -53,6 +59,7 @@ function applyToState(ev) {
     case 'clear': {
       const t = ev.target || 'all';
       if (t === 'all' || t === 'bleed') state.bleed.intensity = 0;
+      if (t === 'all' || t === 'bile') state.bile.intensity = 0;
       if (t === 'all' || t === 'smoke') state.smoke = { intensity: 0, until: 0 };
       if (t === 'all' || t === 'warning') state.warning = null;
       break;
@@ -65,6 +72,7 @@ function applyToState(ev) {
       break;
     case 'reset':
       state.bleed.intensity = 0;
+      state.bile.intensity = 0;
       state.smoke = { intensity: 0, until: 0 };
       state.warning = null;
       state.vitals = { ...BASELINE_VITALS };
@@ -93,6 +101,10 @@ export function publish(raw, from = 'api') {
     return { ok: false, error: `invalid event: ${e?.instancePath || ''} ${e?.message || ''}`.trim() };
   }
   if (raw.type === 'hello') return { ok: false, error: 'hello is only valid on a websocket' };
+  if (raw.type === 'tools') { // high-rate pose stream: no state, no log, displays only
+    broadcast({ ...raw, from }, (c) => c.role === 'display' || c.role === 'observer');
+    return { ok: true };
+  }
   const ev = { ...raw, id: randomUUID(), ts: Date.now(), from };
   applyToState(ev);
   recent.push(ev); if (recent.length > 100) recent.shift();
@@ -192,6 +204,13 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => clearInterval(ping));
 });
 
+// Tool poses over UDP (one JSON `tools` message per datagram) for tracker hardware
+// that would rather not speak WebSocket, e.g. a Python/OpenCV process or an ESP32.
+const udp = dgram.createSocket('udp4');
+udp.on('message', (buf) => { try { const r = publish(JSON.parse(buf.toString()), 'tracker'); if (!r.ok) console.warn('[udp]', r.error); } catch { /* ignore junk */ } });
+udp.on('error', (e) => console.warn('[udp]', e.message));
+udp.bind(TOOLS_UDP_PORT, HOST);
+
 server.listen(PORT, HOST, () => {
-  console.log(`lap-sim-vr server on ${USE_HTTPS ? 'https' : 'http'}://${HOST}:${PORT}  (ws path /ws, MediaMTX ${MEDIAMTX_URL}, camera path "${CAMERA_PATH}")`);
+  console.log(`lap-sim-vr server on ${USE_HTTPS ? 'https' : 'http'}://${HOST}:${PORT}  (ws path /ws, tool poses udp/${TOOLS_UDP_PORT}, MediaMTX ${MEDIAMTX_URL}, camera path "${CAMERA_PATH}")`);
 });

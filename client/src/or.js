@@ -131,13 +131,15 @@ export function buildPatient(surfaceY) {
   drape.receiveShadow = true; drape.name = 'drape';
   g.add(drape);
   const heightAt = (x, z) => { let h = 0; for (const [bx, bz, rx, rz, bh] of blobs) { const q = ((x - bx) / rx) ** 2 + ((z - bz) / rz) ** 2; if (q < 1) h = Math.max(h, bh * Math.sqrt(1 - q)); } return surfaceY + 0.015 + h; };
-  const ports = [[0.0, 0.02], [0.22, 0.08], [0.2, -0.08], [0.3, 0.12]]; // umbilical, epigastric, 2x right subcostal
-  for (const [x, z] of ports) {
+  // patient-local: +X = head, +Z = patient's left (surgeon side). Names match abdomen/tools.js PORTS.
+  const ports = { umbilical: [0.0, 0.01], epigastric: [0.26, 0.01], rsc: [0.18, -0.09], raa: [0.1, -0.16] };
+  g.userData.ports = {};
+  for (const [name, [x, z]] of Object.entries(ports)) {
     const p = new THREE.Group();
     const cannula = cyl(0.008, 0.008, 0.12, mat.darkSteel, 12); cannula.position.y = 0.06;
     const hub = cyl(0.018, 0.016, 0.035, mat.black, 16); hub.position.y = 0.12;
     p.add(cannula, hub); p.position.set(x, heightAt(x, z) - 0.01, z); p.rotation.z = (x - 0.15) * 0.8;
-    g.add(p);
+    g.add(p); g.userData.ports[name] = p;
   }
   // head end: ether screen (anaesthesia drape bar), head with cap on a pillow
   const bar = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.008, 8, 32, Math.PI), mat.steel);
