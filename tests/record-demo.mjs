@@ -40,8 +40,8 @@ await page.waitForTimeout(1500);
 
 async function press(selector, wait) {
   const el = ctl.locator(selector).first();
-  await el.evaluate((b) => { b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 700); });
-  await el.click();
+  // dispatch directly: Playwright's actionability checks crawl while swiftshader renders WebGL
+  await el.evaluate((b) => { b.scrollIntoView({ block: 'center' }); b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 700); b.click(); });
   console.log('pressed', selector);
   await page.waitForTimeout(wait);
 }

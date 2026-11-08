@@ -67,7 +67,7 @@ await shot('01-or-overview');
 await look(EYE, [-0.6, 1.2, -1.2]);
 await shot('02-or-left');
 
-await look([0.7, 1.6, -0.2], [1.45, 1.55, -1.2]);
+await look([0.95, 1.62, -0.45], [1.45, 1.6, -1.2]);
 await post({ type: 'vitals', hr: 78, bp: '122/76', spo2: 99, transitionMs: 0 });
 await shot('03-vitals-monitor');
 
