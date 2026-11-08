@@ -22,8 +22,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const USE_HTTPS = /^(1|true|yes)$/i.test(process.env.HTTPS || '');
 const MEDIAMTX_URL = (process.env.MEDIAMTX_URL || 'http://127.0.0.1:8889').replace(/\/$/, '');
 const CAMERA_PATH = process.env.CAMERA_PATH || 'cam';
-const DEFAULT_SOURCE = process.env.DEFAULT_SOURCE || 'sim'; // sim | auto | live | demo
+const DEFAULT_SOURCE = process.env.DEFAULT_SOURCE || (process.env.RESTYLE_URL ? 'frames' : 'sim'); // sim | auto | live | demo
 const TOOLS_UDP_PORT = Number(process.env.TOOLS_UDP_PORT || 9870);
+// live-restyle server (e.g. via an ssh tunnel to the GPU). When set, the lap monitor shows its
+// AI-restyled frames and every finished frame is announced on our bus as {type:"frame"}.
+const RESTYLE_URL = (process.env.RESTYLE_URL || '').replace(/\/$/, '');
 
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'schema/events.schema.json'), 'utf8'));
 const validate = new Ajv({ allErrors: false, strict: false }).compile(schema);
@@ -36,7 +39,7 @@ const state = {
   smoke: { intensity: 0, until: 0 },
   warning: null,
   vitals: { ...BASELINE_VITALS },
-  source: { mode: DEFAULT_SOURCE },
+  source: { mode: DEFAULT_SOURCE, ...(RESTYLE_URL ? { url: './api/restyled.jpg', pollMs: 20000 } : {}) },
 };
 
 function applyToState(ev) {
@@ -191,6 +194,26 @@ if (fs.existsSync(dist)) {
   app.use(express.static(dist, { extensions: ['html'] }));
 } else {
   app.get('/', (_req, res) => res.type('text').send('No dist/ build. Run `npm run build`, or use `npm run dev` (Vite on :5173).'));
+}
+
+// ---------------------------------------------------------------- restyle relay
+// Browsers (the Quest) can't reach the GPU, so the server proxies frames (/api/restyled.jpg)
+// and turns the restyle service's /ws/notify into {type:"frame"} bus events.
+if (RESTYLE_URL) {
+  app.get('/api/restyled.jpg', async (_req, res) => {
+    try {
+      const r = await fetch(`${RESTYLE_URL}/frame/result.jpg`);
+      if (!r.ok) return res.status(r.status).end();
+      res.set({ 'content-type': r.headers.get('content-type') || 'image/jpeg', 'cache-control': 'no-store' }).send(Buffer.from(await r.arrayBuffer()));
+    } catch (e) { res.status(502).json({ error: e.message }); }
+  });
+  const connectNotify = () => {
+    const ws = new WebSocket(`${RESTYLE_URL.replace(/^http/, 'ws')}/ws/notify`);
+    ws.onmessage = (m) => { let info = {}; try { info = JSON.parse(m.data); } catch { /* ping */ } broadcast({ type: 'frame', url: './api/restyled.jpg', seq: info.gen, ts: Date.now() }); };
+    ws.onclose = () => setTimeout(connectNotify, 3000);
+    ws.onerror = () => {};
+  };
+  connectNotify();
 }
 
 // ---------------------------------------------------------------- server
