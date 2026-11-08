@@ -116,6 +116,25 @@ Environment variables: `PORT`, `HOST`, `HTTPS=1`, `CERT_FILE`/`KEY_FILE` (e.g. f
 - **No warning:** use [mkcert](https://github.com/FiloSottile/mkcert). Run `mkcert -install && mkcert <laptop-ip> localhost`, then `CERT_FILE=./<ip>+1.pem KEY_FILE=./<ip>+1-key.pem HTTPS=1 PORT=8443 npm start`. To get no warning on the Quest you must also install mkcert's `rootCA.pem` on the headset (Settings → Security → Credentials). That isn't always available, so clicking through is usually simpler.
 - **Remote / no LAN:** any HTTPS tunnel (Cloudflare Tunnel, ngrok, Replicas preview) in front of `npm start` works for the scene, director panel and demo video. Live WebRTC video still needs the headset to reach MediaMTX directly (same LAN), or a TURN server.
 
+## The operating room (art pipeline and performance)
+
+```bash
+. ~/.replicas/runtime-env.sh                     # provides SKETCHFAB_API_TOKEN (never commit it)
+node scripts/fetch-sketchfab.mjs                 # downloads the models in assets-src/or-models.json -> assets-src/sketchfab/ (gitignored)
+node scripts/extract-nodes.mjs assets-src/sketchfab/room.glb assets-src/sketchfab/orlamps.glb Obj3d66-594498-90-834_29   # light boom
+node scripts/extract-nodes.mjs assets-src/sketchfab/room.glb assets-src/sketchfab/pendant.glb Group-594498-941_64        # pendant
+node scripts/build-or-models.mjs                 # simplify + KTX2 + meshopt -> client/public/assets/or/*.glb (needs `toktx` from KTX-Software)
+node scripts/write-credits.mjs                   # -> client/public/assets/credits.json (/credits.html)
+```
+
+Measured budget (Chrome, Quest 3 profile via IWER): the scene has **about 314k triangles in 98 meshes**. A desktop frame is **128 draw calls / about 535k rendered triangles**, including the shadow pass. Stereo XR is **about 210 draw calls / about 790k triangles** for both eyes. The abdomen renders separately into a 1280×720 texture. Things that keep it Quest-friendly:
+- one shadow-casting light (1024² map) plus soft contact-shadow decals instead of baked AO
+- the static room merged per material
+- glass `KHR_materials_transmission` replaced with plain transparency, since transmission forces a second full-scene pass
+- KTX2 GPU-compressed textures
+
+three.js multiview (one draw for both eyes) is only available in its WebGPU renderer today.
+
 ## Opening it on the Quest
 
 1. Put the Quest on the same Wi-Fi as the laptop or Pi.
@@ -243,11 +262,27 @@ docs/prior-art.md  what we looked at and reused
 
 Code: MIT. Third-party assets (all free to reuse):
 
-- **OR room / lighting:** ["Surgery" HDRI](https://polyhaven.com/a/surgery) by Oliksiy Yakovlyev, [Poly Haven](https://polyhaven.com), **CC0**. Tonemapped to JPG for the visible room; the 1k HDR is used for lighting.
-- **Props:** [Metal Stool 01](https://polyhaven.com/a/metal_stool_01) by Ulan Cabanilla, [Metal Trash Can](https://polyhaven.com/a/metal_trash_can) by GurJas Studios, Poly Haven, **CC0** (re-packed to GLB/WebP with glTF-Transform). Side table and keyboard from the [Furniture Kit](https://kenney.nl/assets/furniture-kit) by [Kenney](https://kenney.nl), **CC0**.
+- **OR equipment and staff:** 3D models from [Sketchfab](https://sketchfab.com), all **CC BY 4.0** (no NC models used; the popular "Charité University Hospital – Operating Room" was skipped because it is CC BY-NC). They were downloaded with the Sketchfab Download API and optimised for Quest (meshoptimizer simplification, KTX2/Basis textures ≤1024 px, meshopt compression). The surgical light boom and equipment pendant were extracted from Chenchanchong's full room model. The in-app list is at `/credits.html`.
+
+| file | model | author | licence |
+|---|---|---|---|
+| anesthesia | [Anesthesia Machine on a Medical Cart](https://sketchfab.com/3d-models/6b28fafc23244ef9a47e84dbde09b5a4) | kkso199 | CC BY 4.0 |
+| endocart | [Endoscope Camera Cart](https://sketchfab.com/3d-models/bd483063aa0d4ab9b43e3cf79240c61b) | krio302 | CC BY 4.0 |
+| roofmon | [Operating Room Roof Monitors](https://sketchfab.com/3d-models/359aea63962d467cb81b42d942870644) | kareem.elgayyar | CC BY 4.0 |
+| ivstand | [Iv drip stand](https://sketchfab.com/3d-models/b503f5749e5841139f3bdd0bec20a7a6) | saba.nazir | CC BY 4.0 |
+| suction | [Suction-canister](https://sketchfab.com/3d-models/34f41e2382fb4b66a9732cbebc8e872d) | Dwayne.Barnett | CC BY 4.0 |
+| trolley | [Medical Props (instrument trolley)](https://sketchfab.com/3d-models/4b2e1a4c3f13432b9a0bc15355b27632) | coa white | CC BY 4.0 |
+| cabinet | [Hospital medical Treatment Cabinet](https://sketchfab.com/3d-models/9a9edfe3879e4889877bf1dff97c6105) | Chenchanchong | CC BY 4.0 |
+| surgeon | [Male surgical doctor working 22](https://sketchfab.com/3d-models/79e23af07d1243c789b3372c6ec72c27) | deep3dstudio | CC BY 4.0 |
+| nurse | [Nurse in light blue scrubs](https://sketchfab.com/3d-models/fc7dad7d88f24687bc718a32d6ad4e8d) | restore50 | CC BY 4.0 |
+| bed | [Hospital Operating Room/Examination Bed](https://sketchfab.com/3d-models/e3d748837ab14ef3aab1348faa20991d) | Chenchanchong | CC BY 4.0 |
+| orlamps | [Hospital operating room (surgical light boom, extracted)](https://sketchfab.com/3d-models/a27400a73f4a43fbb1dda30031cb91c2) | Chenchanchong | CC BY 4.0 |
+| pendant | [Hospital operating room (equipment pendant, extracted)](https://sketchfab.com/3d-models/a27400a73f4a43fbb1dda30031cb91c2) | Chenchanchong | CC BY 4.0 |
+
+- **Reflections / lighting:** ["Surgery" HDRI](https://polyhaven.com/a/surgery) by Oliksiy Yakovlyev, [Poly Haven](https://polyhaven.com), **CC0** (environment map only; the room itself is now a 3D shell in `client/src/room.js`).
 - **Liver and gallbladder meshes (virtual abdomen):** from [LapGym / sofa_env](https://github.com/ScheiklP/sofa_env) (`grasp_lift_touch` scene) by Paul Maria Scheikl et al., **MIT**. Converted with `scripts/build-anatomy.mjs`. The ducts, artery, peritoneum, bowel and omentum are procedural.
 - **Demo laparoscope video:** Boer J, Boerma D, de Vries Reilingh T. *A gallbladder torsion presenting as acute cholecystitis in an elderly woman: a case report.* J Med Case Reports 2011;5:588. [Video via Wikimedia Commons](https://commons.wikimedia.org/wiki/File:A-gallbladder-torsion-presenting-as-acute-cholecystitis-in-an-elderly-woman-A-case-report-1752-1947-5-588-S1.ogv), **CC BY 2.0**. Cropped and transcoded to H.264.
 - **Libraries:** [three.js](https://threejs.org) (MIT), [IWER / @iwer/devui](https://github.com/meta-quest/immersive-web-emulation-runtime) (MIT, Meta), [MediaMTX](https://github.com/bluenviron/mediamtx) incl. vendored `reader.js`/`publisher.js` (MIT), [ws](https://github.com/websockets/ws), [Express](https://expressjs.com), [Ajv](https://ajv.js.org), [Vite](https://vite.dev).
-- The OR table, draped patient, surgical lights, laparoscopy tower, IV pole and back table are procedural (`client/src/or.js`).
+- The room shell (floor, walls, laminar-flow ceiling, door, PACS display, gas panel) and the draped patient are procedural (`client/src/room.js`, `client/src/or.js`).
 
 This is a training aid for a physical box trainer, not a medical device.
