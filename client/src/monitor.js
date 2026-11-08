@@ -77,6 +77,11 @@ const fragmentShader = /* glsl */ `
   void main() {
     vec2 uv = vUv;
     vec2 vuv = coverUv(uv);
+    if (linearIn > 0.5) { // laparoscope optics: slight barrel distortion (sim render only)
+      vec2 c = (vuv - 0.5) * vec2(screenAspect, 1.0);
+      float r2 = dot(c, c);
+      vuv = 0.5 + c * (1.0 - 0.07 * r2) / (1.0 - 0.07 * 0.6) / vec2(screenAspect, 1.0);
+    }
     float s = smoke;
     vec2 drift = vec2(time * 0.02, time * 0.06);
 

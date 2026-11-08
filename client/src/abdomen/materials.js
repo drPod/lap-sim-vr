@@ -51,7 +51,7 @@ export function tissueMaterial(o = {}) {
     uVein: { value: new THREE.Color(o.vein ?? 0x7a0d10) }, uVeinAmt: { value: o.veinAmt ?? 0 }, uVeinScale: { value: o.veinScale ?? 60 },
     uVeinWidth: { value: o.veinWidth ?? 0.06 },
     uScale: { value: o.scale ?? 40 }, uBump: { value: o.bump ?? 0.0015 }, uBumpScale: { value: o.bumpScale ?? 220 },
-    uSpots: { value: o.spots ?? 0 }, uSpotScale: { value: o.spotScale ?? 600 }, uChar: { value: new THREE.Color(0x1a0f08) },
+    uSpots: { value: o.spots ?? 0 }, uSSS: { value: o.sss ?? 0 }, uSpotScale: { value: o.spotScale ?? 600 }, uChar: { value: new THREE.Color(0x1a0f08) },
   };
   const m = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: o.roughness ?? 0.55, metalness: 0,
@@ -69,7 +69,7 @@ export function tissueMaterial(o = {}) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = restPos; vBurn = burn;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform vec3 uColA, uColB, uVein, uChar; uniform float uVeinAmt, uVeinScale, uVeinWidth, uScale, uBump, uBumpScale, uSpots, uSpotScale;
+uniform vec3 uColA, uColB, uVein, uChar; uniform float uSSS; uniform float uVeinAmt, uVeinScale, uVeinWidth, uScale, uBump, uBumpScale, uSpots, uSpotScale;
 varying vec3 vRest; varying float vBurn;
 ${NOISE}`)
       .replace('#include <map_fragment>', `
@@ -82,7 +82,8 @@ float vmask = smoothstep(-0.2, 0.4, snoise(vRest * uVeinScale * 0.35 + 9.0));
 float ridge = (1.0 - smoothstep(0.0, uVeinWidth, abs(vn))) * vmask;
 tc = mix(tc, uVein, ridge * uVeinAmt);
 tc = mix(tc, uChar, clamp(vBurn, 0.0, 1.0) * 0.85);
-diffuseColor.rgb *= tc;`)
+diffuseColor.rgb *= tc;
+totalEmissiveRadiance += tc * uSSS;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = clamp(roughnessFactor + 0.25 * snoise(vRest * uScale * 0.5) + 0.4 * vBurn, 0.05, 1.0);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -104,8 +105,8 @@ export function prepTissueGeometry(geo, rest = null) {
 }
 
 export const TISSUE = {
-  liver: () => tissueMaterial({ polygonOffset: 2, colA: 0x7a2618, colB: 0xa8412a, scale: 35, spots: 0.18, spotScale: 900, bump: 0.0012, bumpScale: 260, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.06, vein: 0x3a0806, veinAmt: 0.15, veinScale: 30 }),
-  gallbladder: () => tissueMaterial({ colA: 0x4e6e62, colB: 0x8aa088, scale: 30, vein: 0x9a1a1a, veinAmt: 0.75, veinScale: 70, veinWidth: 0.05, bump: 0.0008, bumpScale: 300, roughness: 0.45, clearcoat: 1, clearcoatRoughness: 0.05, sheen: 0.25, sheenColor: 0xd8e8e0 }),
+  liver: () => tissueMaterial({ polygonOffset: 2, sss: 0.02, sheen: 0.5, sheenColor: 0xff6a50, colA: 0x7a2618, colB: 0xa8412a, scale: 35, spots: 0.18, spotScale: 900, bump: 0.0012, bumpScale: 260, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.06, vein: 0x3a0806, veinAmt: 0.15, veinScale: 30 }),
+  gallbladder: () => tissueMaterial({ sss: 0.02, colA: 0x4e6e62, colB: 0x8aa088, scale: 30, vein: 0x9a1a1a, veinAmt: 0.75, veinScale: 70, veinWidth: 0.05, bump: 0.0008, bumpScale: 300, roughness: 0.45, clearcoat: 1, clearcoatRoughness: 0.05, sheen: 0.25, sheenColor: 0xd8e8e0 }),
   fat: (o = {}) => tissueMaterial({ colA: 0xd09a38, colB: 0xf0d070, scale: 120, spots: 0.12, spotScale: 500, bump: 0.0008, bumpScale: 260, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.1, vein: 0x8a1a12, veinAmt: 0.35, veinScale: 90, ...o }),
   duct: () => tissueMaterial({ colA: 0x9c9670, colB: 0xcfc69c, scale: 150, vein: 0xa02020, veinAmt: 0.35, veinScale: 300, veinWidth: 0.08, bump: 0.0004, bumpScale: 600, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.06, sheen: 0.4 }),
   artery: () => tissueMaterial({ colA: 0x9a2a28, colB: 0xc85a50, scale: 160, vein: 0x701010, veinAmt: 0.3, veinScale: 300, bump: 0.0003, bumpScale: 700, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 }),

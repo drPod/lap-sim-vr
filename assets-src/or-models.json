@@ -15,8 +15,9 @@
       "title": "Endoscope Camera Cart",
       "author": "krio302",
       "license": "CC BY 4.0",
-      "ratio": 0.06,
-      "error": 0.01
+      "ratio": 0.12,
+      "error": 0.02,
+      "dropNormals": true
     },
     {
       "name": "roofmon",

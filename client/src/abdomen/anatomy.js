@@ -251,7 +251,7 @@ class FatSheet {
     const rest = new Float32Array(n * 3); this.ids.forEach((k, i) => rest.set(sim.rest.subarray(k * 3, k * 3 + 3), i * 3));
     prepTissueGeometry(this.geo, rest);
     this.local = new Map(this.ids.map((k, i) => [k, i]));
-    this.mesh = new THREE.Mesh(this.geo, TISSUE.fat({ side: THREE.DoubleSide, transparent: true, opacity: 0.62, depthWrite: false, colA: 0xd8b070, colB: 0xf6ead0, spots: 0.15, scale: 160, veinAmt: 0.5 }));
+    this.mesh = new THREE.Mesh(this.geo, TISSUE.fat({ side: THREE.DoubleSide, transparent: true, opacity: 0.86, depthWrite: false, colA: 0xc8902c, colB: 0xf2cf6a, spots: 0.3, spotScale: 420, scale: 140, veinAmt: 0.45, bump: 0.0016, bumpScale: 320 }));
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
     scene.add(this.mesh);
     this.rebuildIndex();

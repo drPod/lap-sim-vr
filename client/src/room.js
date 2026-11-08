@@ -172,6 +172,7 @@ export async function loadProp(renderer, name, { size, axis = 'y', pos = [0, 0, 
   scene.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = cast; o.receiveShadow = true;
+    if (!o.geometry.attributes.normal) { o.geometry.computeVertexNormals(); for (const m of [o.material].flat()) { m.flatShading = false; m.needsUpdate = true; } }
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of ms) { if (m.map) m.map.anisotropy = 4; if ('envMapIntensity' in m) m.envMapIntensity = 1; }
   });

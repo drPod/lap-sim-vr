@@ -101,12 +101,12 @@ export function buildPatient(surfaceY) {
   const L = 1.9, Wd = 1.1, nx = 190, nz = 110;
   const geo = new THREE.PlaneGeometry(L, Wd, nx, nz); geo.rotateX(-Math.PI / 2); geo.translate(0.68 - L / 2, 0, 0); // ends at the ether screen
   const blobs = [ // x, z, rx, rz, height
-    [0.35, 0, 0.3, 0.22, 0.2], [0.05, 0, 0.3, 0.21, 0.19], [-0.3, 0, 0.22, 0.21, 0.15],
-    [-0.75, 0.09, 0.4, 0.075, 0.1], [-0.75, -0.09, 0.4, 0.075, 0.1],
+    [0.35, 0, 0.32, 0.24, 0.15], [0.05, 0, 0.32, 0.23, 0.14], [-0.3, 0, 0.24, 0.22, 0.11],
+    [-0.75, 0.09, 0.42, 0.085, 0.075], [-0.75, -0.09, 0.42, 0.085, 0.075],
   ];
   const win = { x: 0.14, z: 0.02, rx: 0.2, rz: 0.13 }; // prepped abdominal window
   const pos = geo.attributes.position, colors = [];
-  const blue = new THREE.Color(0x2d6f9c), iod = new THREE.Color(0x7a4026), tmp = new THREE.Color();
+  const blue = new THREE.Color(0x173f5e), iod = new THREE.Color(0x7a4026), tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     let h = 0;
@@ -118,7 +118,7 @@ export function buildPatient(surfaceY) {
     let y = surfaceY + 0.015 + h;
     if (az > 0.29) y -= (az - 0.29) * 2.4;            // hangs over the long edges
     if (ax > 0) y -= ax * 2.6;                        // and over the foot end
-    y += 0.006 * Math.sin(x * 23 + z * 7) * Math.sin(z * 19); // wrinkles
+    y += 0.004 * Math.sin(x * 23 + z * 7) * Math.sin(z * 19) + 0.0025 * Math.sin(x * 61 - z * 13); // fabric folds
     pos.setY(i, y);
     const qw = ((x - win.x) / win.rx) ** 2 + ((z - win.z) / win.rz) ** 2;
     tmp.copy(blue).multiplyScalar(0.92 + 0.08 * Math.sin(x * 40) * Math.sin(z * 30));
@@ -127,7 +127,7 @@ export function buildPatient(surfaceY) {
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const drape = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.88, sheen: 1, sheenRoughness: 0.55, sheenColor: new THREE.Color(0x8fc3e6), side: THREE.DoubleSide }));
+  const drape = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.95, sheen: 0.35, sheenRoughness: 0.8, sheenColor: new THREE.Color(0x6fa8d0), side: THREE.DoubleSide }));
   drape.castShadow = true;
   drape.receiveShadow = true; drape.name = 'drape';
   g.add(drape);

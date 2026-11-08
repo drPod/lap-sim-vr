@@ -52,7 +52,7 @@ world.add(patient);
 const props = [
   // [model, options]
   ['bed', { size: 2.05, axis: 'x', pos: [TABLE_POS.x, 0, TABLE_POS.z], shadow: [2.4, 1.1] }],
-  ['orlamps', { size: 1.24, pos: [TABLE_POS.x, 3.0 - 1.24, TABLE_POS.z + 0.1], shadow: null, cast: false }],
+  ['orlamps', { size: 1.24, pos: [TABLE_POS.x + 0.1, 3.0 - 1.24, TABLE_POS.z - 0.15], rotY: 0.575, shadow: null, cast: false }],
   ['pendant', { size: 1.8, pos: [1.75, 3.0 - 1.8, -1.75], rotY: Math.PI, shadow: null }],
   ['anesthesia', { size: 1.45, pos: [1.95, 0, -0.75], rotY: -Math.PI / 2, shadow: [0.9, 1.0] }],
   ['endocart', { size: 1.45, pos: [0.35, 0, -1.95], shadow: [0.8, 0.8] }],
@@ -67,9 +67,9 @@ const props = [
 const propsLoaded = Promise.allSettled(props.map(([name, o]) => loadProp(renderer, name, o).then((g) => { world.add(g); return g; })))
   .then((r) => { r.forEach((x, i) => { if (x.status === 'rejected') console.warn('prop failed', props[i][0], x.reason); }); });
 // the surgical lights light the field: two spots from the lamp heads onto the abdomen
-for (const [dx, dz] of [[-0.45, 0.35], [0.5, -0.25]]) {
-  const sp = new THREE.SpotLight(0xfff8ee, 9, 3.2, 0.32, 0.55, 1.4);
-  sp.position.set(TABLE_POS.x + dx, 1.95, TABLE_POS.z + dz); sp.target.position.set(TABLE_POS.x + 0.12, TABLE_TOP + 0.2, TABLE_POS.z + 0.02);
+for (const [dx, dz] of [[-1.1, -0.15], [1.3, -0.15]]) {
+  const sp = new THREE.SpotLight(0xfff8ee, 14, 3.5, 0.3, 0.55, 1.4);
+  sp.position.set(TABLE_POS.x + dx, 1.85, TABLE_POS.z + dz); sp.target.position.set(TABLE_POS.x + 0.12, TABLE_TOP + 0.2, TABLE_POS.z + 0.02);
   world.add(sp, sp.target);
 }
 
