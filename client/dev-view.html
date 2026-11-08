@@ -1,0 +1,19 @@
+<!doctype html><html><body style="margin:0;background:#888"><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(800, 600); r.toneMapping = THREE.ACESFilmicToneMapping; document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color(0x808080);
+s.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+const g = await new GLTFLoader().loadAsync(`./_dev/${q.get('m')}.glb`);
+s.add(g.scene);
+const b = new THREE.Box3().setFromObject(g.scene), c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3());
+const cam = new THREE.PerspectiveCamera(50, 4 / 3, 0.01, 1000);
+const inside = q.has('inside');
+if (inside) { cam.position.set(c.x - sz.x * 0.35, b.min.y + 1.7, c.z + sz.z * 0.3); cam.lookAt(c.x + sz.x * 0.2, b.min.y + 1.0, c.z - sz.z * 0.2); cam.fov = 75; cam.updateProjectionMatrix(); }
+else { const d = Math.max(sz.x, sz.y, sz.z) * 1.6; cam.position.set(c.x + d * 0.6, c.y + d * 0.35, c.z + d * 0.8); cam.lookAt(c); }
+r.render(s, cam);
+let tris = 0, draws = 0; g.scene.traverse((o) => { if (o.isMesh) { draws++; tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
+window.info = { size: sz.toArray().map((v) => +v.toFixed(2)), min: b.min.toArray().map((v) => +v.toFixed(2)), tris: Math.round(tris), draws }; window.done = true;
+</script></body></html>

@@ -11,11 +11,11 @@ import { VideoSource } from './video.js';
 import { connectEvents } from './events.js';
 import { Abdomen } from './abdomen/index.js';
 import { Autopilot } from './abdomen/autopilot.js';
-import { KeyboardTools } from './abdomen/keyboard.js';
-import { TOOL_TYPES } from './abdomen/tools.js';
+import { KeyboardTools, controlsPanel } from './abdomen/keyboard.js';
+import { TOOL_TYPES, poseToShaft } from './abdomen/tools.js';
 
 const params = new URLSearchParams(location.search);
-if (params.has('clean')) document.body.classList.add('clean');
+if (params.has('clean') || params.get('view') === 'scope') document.body.classList.add('clean'); // scope view: image only (+ controls card)
 const device = await maybeEmulate(params);
 
 // ------------------------------------------------------------------ renderer
@@ -69,6 +69,23 @@ world.add(monitor.group);
 const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.3, 12), new THREE.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.5 }));
 boom.position.set(0.3, 2.5, -1.8); world.add(boom);
 
+// In-VR controller cheat-sheet on a small stand at the surgeon's left
+{
+  const c = document.createElement('canvas'); c.width = 768; c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgba(12,18,26,0.92)'; x.beginPath(); x.roundRect(0, 0, 768, 512, 28); x.fill();
+  x.fillStyle = '#9fd0ff'; x.font = '700 38px system-ui'; x.fillText('Controllers = instruments', 32, 62);
+  x.font = '500 27px system-ui'; x.fillStyle = '#dfe7ef';
+  [['Left hand', 'grasper via right-subcostal port'], ['Right hand', 'instrument via epigastric port'], ['Move hand', 'tool pivots through the trocar'],
+    ['Trigger', 'close jaws: grasp / clip / cut'], ['A / X', 'energy (hook cautery)'], ['B / Y', 'next instrument'], ['Grip', 'recenter the room'],
+    ['', '(off when the box tracker is streaming)']].forEach(([k, v], i) => {
+    x.fillStyle = '#ffd27a'; x.fillText(k, 32, 120 + i * 48); x.fillStyle = '#dfe7ef'; x.fillText(v, 220, 120 + i * 48);
+  });
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
+  panel.position.set(-0.62, 1.32, -0.42); panel.lookAt(0, 1.6, 0.3); panel.name = 'vr-controls-help';
+  world.add(panel);
+}
 const captions = new Captions({ width: 1.4 });
 captions.mesh.position.set(0, -monitor.height / 2 - 0.15, 0.04);
 monitor.group.add(captions.mesh);
@@ -100,17 +117,30 @@ const whepOverride = params.get('whep');
 let sourceMode = params.get('source') || config.defaultSource || 'sim';
 
 // ------------------------------------------------------------------ virtual abdomen (source "sim")
-let abd = null, abdLoading = null, autopilot = null, keyTools = null;
+let abd = null, abdLoading = null, autopilot = null, keyTools = null, helpPanel = null;
 function ensureAbdomen() {
   abdLoading ??= (async () => {
     const a = new Abdomen({
       ...(([w, h]) => ({ width: w, height: h }))((params.get('simRes') || '1280x720').split('x').map(Number)), fat: params.get('fat') !== '0', scopeAngle: Number(params.get('scopeAngle') || 0) * Math.PI / 180,
-      onEvent: (ev) => { if (!bus.send(ev)) apply({ ...ev, ts: Date.now(), from: 'sim' }); },
+      onEvent: (ev) => {
+        if (ev.type === 'sim') helpPanel?.note(`${ev.action}: ${ev.target}${ev.total ? ` (${ev.total} clips)` : ''}`);
+        if (!bus.send(ev)) apply({ ...ev, ts: Date.now(), from: 'sim' });
+      },
     });
     await a.init();
     abd = a;
     if (params.has('autopilot')) autopilot = new Autopilot(abd, { variant: params.get('autopilot') });
-    if (params.get('view') === 'scope' || params.has('keys')) keyTools = new KeyboardTools(abd, renderer.domElement, null);
+    const scope = params.get('view') === 'scope';
+    if (!params.has('emulate') || params.has('keys')) {
+      keyTools = new KeyboardTools(abd, renderer.domElement, {
+        requireShift: !scope, // in the OR view a plain drag orbits the room
+        onToggleAutopilot: () => { autopilot = autopilot ? null : new Autopilot(abd); helpPanel?.note(autopilot ? 'autopilot running (P stops)' : 'autopilot stopped'); },
+      });
+      if (!params.has('clean') || params.has('help')) {
+        helpPanel = controlsPanel({ keyTools, title: scope ? 'Instrument controls (scope view)' : 'Instrument controls (desktop)', showInput: params.has('showInput'),
+          extra: scope ? [] : [['Shift + drag / Shift + wheel', 'move the tool / depth (plain drag orbits the room)'], ['?view=scope', 'full-screen laparoscope view']] });
+      }
+    }
     return a;
   })();
   return abdLoading;
@@ -252,6 +282,7 @@ renderer.setAnimationLoop((time) => {
   monitor.update(dt, t);
   vitals.update(dt, t);
   captions.update();
+  if (helpPanel && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) helpPanel.update();
   if (abd && sourceMode === 'sim') {
     if (!manualSim) stepSim(dt);
     abd.render(renderer);
@@ -273,7 +304,7 @@ if (!scopeView) document.body.appendChild(vrButton);
 // Hooks for tests / debugging in the console
 window.lapsim = {
   THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter,
-  get abd() { return abd; }, get autopilot() { return autopilot; }, setSource,
+  get abd() { return abd; }, get autopilot() { return autopilot; }, get keyTools() { return keyTools; }, setSource, poseToShaft,
   stepSim(n = 1, dt = 1 / 30) { for (let i = 0; i < n; i++) stepSim(dt); renderRequested = true; },
   snap() { monitor.snap(); vitals.snap(); },
 };

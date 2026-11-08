@@ -85,9 +85,12 @@ export class Abdomen {
         const cand = sim.within(tip, 0.009, (i) => sim.w0[i] > 0 && !sim.kin.has(i))
           .map((i) => ({ i, d: Math.hypot(sim.x[i * 3] - tip[0], sim.x[i * 3 + 1] - tip[1], sim.x[i * 3 + 2] - tip[2]) }))
           .sort((a, b) => a.d - b.d);
-        if (cand.length) {
+        // the peritoneal veil lies on top: if it's within reach, that's what the jaws catch
+        const fat = cand.filter((c) => sim.tag[c.i] === TAG.FAT && c.d < 0.006);
+        const pick = fat.length ? fat.slice(0, 4) : cand.filter((c) => c.d < cand[0].d + 0.003).slice(0, 3);
+        if (pick.length) {
           const inv = this.toolMatrix(id).clone().invert();
-          for (const c of cand.filter((c) => c.d < cand[0].d + 0.003).slice(0, 3)) {
+          for (const c of pick) {
             const local = new THREE.Vector3().fromArray(sim.x, c.i * 3).applyMatrix4(inv);
             st.grabbed.push({ i: c.i, local });
             sim.w[c.i] = 0;
@@ -98,7 +101,7 @@ export class Abdomen {
     }
 
     if (type === 'clipper' && closing) {
-      const hit = this.nearestRod(tip, 0.005);
+      const hit = this.nearestRod(tip, 0.006);
       if (hit && !hit.rod.clips.some((c) => Math.abs(c.idx - hit.i) < 1.2) && !hit.rod.cuts.some((c) => Math.abs(c - hit.i) < 1)) {
         const clip = { rod: hit.rod, idx: hit.i, leg: new THREE.Vector3(...shaft.dir), mesh: makeClip(THREE) };
         hit.rod.clips.push(clip); this.clips.push(clip); this.scene.add(clip.mesh);
@@ -108,7 +111,7 @@ export class Abdomen {
     }
 
     if (type === 'scissors' && closing) {
-      const hit = this.nearestRod(tip, 0.0045);
+      const hit = this.nearestRod(tip, 0.006);
       if (hit) {
         const i = this.segmentAt(hit.rod, tip);
         if (hit.rod.clips.some((c) => Math.abs(c.idx - (i + 0.5)) < 0.6)) {
@@ -207,9 +210,10 @@ export class Abdomen {
       const shaft = applyPoseToGroup(THREE, g, pose, this.t);
       const st = this.state[id];
       const skip = new Set(st.grabbed.map((x) => x.i));
-      const jawEnd = shaft.hinge.map((v, k) => v + shaft.dir[k] * (pose.tool === 'hook' ? 0.017 : 0.012));
+      // jawed instruments: only the shaft pushes tissue (tissue must be able to get between open jaws)
+      const jawEnd = shaft.hinge.map((v, k) => v + shaft.dir[k] * (pose.tool === 'hook' ? 0.012 : -0.002));
       const back = shaft.hinge.map((v, k) => v - shaft.dir[k] * 0.2);
-      if (!this.noCollide) sim.colliders.push({ a: jawEnd, b: back, r: pose.tool === 'hook' ? 0.0018 : 0.0032, skip });
+      if (!this.noCollide) sim.colliders.push({ a: jawEnd, b: back, r: pose.tool === 'hook' ? 0.0018 : 0.0028, skip });
       this.interact(id, pose, shaft);
       if (st.grabbed.length) {
         const M = this.toolMatrix(id), v = new THREE.Vector3();

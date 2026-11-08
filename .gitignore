@@ -8,3 +8,4 @@ artifacts/
 .DS_Store
 auto.crt
 auto.key
+client/public/_dev/
