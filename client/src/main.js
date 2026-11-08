@@ -5,6 +5,8 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 import { maybeEmulate } from './emulate.js';
 import { buildPatient } from './or.js';
 import { OutsideInstruments, abdomenToWorld } from './outside.js';
+import { FrameStream } from './framestream.js';
+import { loadPatient, abdomenOriginY } from './patient.js';
 import { buildRoom, setupLighting, loadProp, sceneStats, contactShadow, TABLE_POS, ROOM } from './room.js';
 import { LapMonitor } from './monitor.js';
 import { VitalsMonitor } from './vitals.js';
@@ -14,7 +16,7 @@ import { connectEvents } from './events.js';
 import { Abdomen } from './abdomen/index.js';
 import { Autopilot } from './abdomen/autopilot.js';
 import { KeyboardTools, controlsPanel } from './abdomen/keyboard.js';
-import { TOOL_TYPES, poseToShaft } from './abdomen/tools.js';
+import { TOOL_TYPES, poseToShaft, PORTS } from './abdomen/tools.js';
 
 const params = new URLSearchParams(location.search);
 if (params.has('clean') || params.get('view') === 'scope') document.body.classList.add('clean'); // scope view: image only (+ controls card)
@@ -52,7 +54,11 @@ patient.position.copy(TABLE_POS);
 world.add(patient);
 for (const p of Object.values(patient.userData.ports)) p.visible = false; // trocars now come from outside.js
 // instruments + trocars in the room, in the abdomen frame mapped onto the belly (see outside.js)
-const outside = new OutsideInstruments(world, abdomenToWorld(new THREE.Vector3(TABLE_POS.x + 0.12, TABLE_TOP + 0.05, TABLE_POS.z)));
+// origin height from the baked body's skin at the ports (patient-landmarks.json), so trocars sit on the skin
+const outside = new OutsideInstruments(world, abdomenToWorld(new THREE.Vector3(TABLE_POS.x + 0.12, abdomenOriginY(PORTS), TABLE_POS.z)));
+// realistic patient (scanned body + baked cloth drapes); the procedural one stays only as a fallback
+patient.visible = false;
+const patientLoaded = loadPatient(renderer, world).catch((e) => { console.warn('patient.glb failed, using procedural fallback', e); patient.visible = true; });
 const props = [
   // [model, options]
   ['bed', { size: 2.05, axis: 'x', pos: [TABLE_POS.x, 0, TABLE_POS.z], shadow: [2.4, 1.1] }],
@@ -160,9 +166,18 @@ function ensureAbdomen() {
   })();
   return abdLoading;
 }
-async function setSource(mode, whep) {
+const frames = new FrameStream({
+  onStatus: (st, detail) => { if (sourceMode === 'frames') status('src-dot', 'src-text', st === 'live' ? 'ok' : 'bad', `video: ${detail}`); },
+});
+async function setSource(mode, whep, opts = {}) {
   sourceMode = mode;
-  if (mode === 'sim') {
+  if (mode !== 'frames') frames.stop();
+  if (mode === 'frames') {
+    video.stopLive(); video.demo.pause();
+    frames.configure({ url: opts.url ?? params.get('frameUrl') ?? frames.cfg.url, ws: opts.ws ?? params.get('frameWs') ?? frames.cfg.ws, pollMs: opts.pollMs ?? Number(params.get('framePoll') ?? frames.cfg.pollMs) });
+    monitor.setTexture(frames.texture, 'LIVE · AI', { linear: false });
+    status('src-dot', 'src-text', 'warn', 'video: waiting for AI frames…');
+  } else if (mode === 'sim') {
     video.stopLive(); video.demo.pause();
     status('src-dot', 'src-text', 'warn', 'video: loading virtual abdomen…');
     const a = await ensureAbdomen();
@@ -171,7 +186,7 @@ async function setSource(mode, whep) {
     status('src-dot', 'src-text', 'ok', 'video: virtual abdomen (XPBD sim)');
   } else video.configure({ mode, whep: whepOverride || whep || config.whep });
 }
-setSource(sourceMode, config.whep);
+setSource(sourceMode, config.whep, {});
 
 // ------------------------------------------------------------------ events
 function apply(ev) {
@@ -182,7 +197,7 @@ function apply(ev) {
       if (s.smoke.intensity > 0 && (!s.smoke.until || s.smoke.until > Date.now())) monitor.setSmoke({ intensity: s.smoke.intensity, durationMs: s.smoke.until ? s.smoke.until - Date.now() : 0 });
       monitor.setWarning(s.warning && (!s.warning.until || s.warning.until > Date.now()) ? { ...s.warning, durationMs: s.warning.until ? s.warning.until - Date.now() : 0 } : null);
       vitals.set({ ...s.vitals, transitionMs: 0 }); vitals.snap();
-      if (!params.get('source') && s.source?.mode && s.source.mode !== sourceMode) setSource(s.source.mode, s.source.whep);
+      if (!params.get('source') && s.source?.mode && (s.source.mode !== sourceMode || s.source.mode === 'frames')) setSource(s.source.mode, s.source.whep, s.source);
       monitor.setBile(s.bile || { intensity: 0 });
       break;
     }
@@ -200,7 +215,8 @@ function apply(ev) {
     }
     case 'vitals': vitals.set(ev); break;
     case 'say': captions.push(ev.speaker, ev.text); audio.say(ev); break;
-    case 'source': setSource(ev.mode, ev.whep); break;
+    case 'source': setSource(ev.mode, ev.whep, ev); break;
+    case 'frame': if (sourceMode === 'frames') frames.refresh('bus', ev.url); break;
     case 'bile': monitor.setBile(ev); break;
     case 'tools':
       if (ev.from === 'hardware' || ev.from === 'tracker') { trackerSeen = performance.now(); trackerCount++; }
@@ -306,6 +322,7 @@ renderer.setAnimationLoop((time) => {
   monitor.update(dt, t);
   vitals.update(dt, t);
   captions.update();
+  frames.update(dt);
   if (helpPanel && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) helpPanel.update();
   if (abd) outside.update(abd.poses);
   if (abd && sourceMode === 'sim') {
@@ -328,9 +345,9 @@ if (!scopeView) document.body.appendChild(vrButton);
 
 // Hooks for tests / debugging in the console
 window.lapsim = {
-  THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter, propsLoaded,
+  THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter, propsLoaded: Promise.all([propsLoaded, patientLoaded]),
   stats() { return { scene: sceneStats(world), drawCalls: renderer.info.render.calls, frameTris: renderer.info.render.triangles }; },
-  outside, get trackerLive() { return performance.now() - trackerSeen < 1000; },
+  frames, outside, get trackerLive() { return performance.now() - trackerSeen < 1000; },
   get abd() { return abd; }, get autopilot() { return autopilot; }, get keyTools() { return keyTools; }, setSource, poseToShaft,
   stepSim(n = 1, dt = 1 / 30) { for (let i = 0; i < n; i++) stepSim(dt); renderRequested = true; },
   snap() { monitor.snap(); vitals.snap(); },

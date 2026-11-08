@@ -161,7 +161,7 @@ export async function setupLighting(renderer, scene, parent) {
   // key light from the laminar-flow canopy: the only shadow caster
   const key = new THREE.DirectionalLight(0xf2f6ff, 1.6);
   key.position.set(TABLE_POS.x + 0.6, ROOM.h + 0.2, TABLE_POS.z + 0.8); key.target.position.copy(TABLE_POS);
-  key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 4;
+  key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0006; key.shadow.normalBias = 0.04; key.shadow.radius = 4;
   Object.assign(key.shadow.camera, { left: -3.2, right: 3.2, top: 3.2, bottom: -3.2, near: 0.5, far: 6 });
   parent.add(key, key.target);
   // fill from the ceiling LED panels

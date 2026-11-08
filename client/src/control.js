@@ -27,4 +27,8 @@ $('bleedGo').onclick = () => send({ type: 'bleed', intensity: +$('bleedI').value
 $('warnGo').onclick = () => send({ type: 'warning', text: $('warnText').value, level: $('warnLevel').value, durationMs: Math.round(+$('warnDur').value * 1000) });
 $('vGo').onclick = () => send({ type: 'vitals', hr: +$('vHr').value, bp: $('vBp').value, spo2: +$('vSpo2').value, etco2: +$('vEtco2').value, rr: +$('vRr').value, transitionMs: Math.round(+$('vT').value * 1000) });
 $('sayGo').onclick = () => send({ type: 'say', speaker: $('sayWho').value, text: $('sayText').value });
+$('frUrl').value = localStorage.getItem('frUrl') || '';
+$('frWs').value = localStorage.getItem('frWs') || '';
+$('frGo').onclick = () => { localStorage.setItem('frUrl', $('frUrl').value); localStorage.setItem('frWs', $('frWs').value); send({ type: 'source', mode: 'frames', url: $('frUrl').value, ws: $('frWs').value, pollMs: Math.round(+$('frPoll').value * 1000) }); };
+$('frNext').onclick = () => send({ type: 'frame' });
 $('rawGo').onclick = () => { try { send(JSON.parse($('raw').value)); } catch (e) { line(`bad JSON: ${e.message}`, 'err'); } };

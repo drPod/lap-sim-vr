@@ -125,6 +125,9 @@
         <button data-ev='{"type":"sim","action":"stop"}'>■ Stop autopilot</button>
         <button data-ev='{"type":"sim","action":"reset"}'>Reset anatomy</button>
       </div>
+      <div class="row" style="margin-top:4px"><label>AI frame URL</label><input id="frUrl" style="flex:1" placeholder="https://…/latest.jpg"></div>
+      <div class="row"><label>notify WS</label><input id="frWs" style="flex:1" placeholder="optional wss://… (any message = new frame)"><label>poll s</label><input id="frPoll" type="number" value="15" style="width:56px"></div>
+      <div class="row"><button id="frGo" class="green">AI-restyled feed (LIVE · AI)</button><button id="frNext">New frame now</button></div>
       <div class="row">
         <button data-ev='{"type":"source","mode":"auto"}'>Box camera (live → demo)</button>
         <button data-ev='{"type":"source","mode":"live"}'>Live camera only</button>

@@ -68,7 +68,7 @@ function applyToState(ev) {
       for (const k of Object.keys(BASELINE_VITALS)) if (ev[k] !== undefined) state.vitals[k] = ev[k];
       break;
     case 'source':
-      state.source = { mode: ev.mode, ...(ev.whep ? { whep: ev.whep } : {}) };
+      state.source = { mode: ev.mode, ...(ev.whep ? { whep: ev.whep } : {}), ...(ev.mode === 'frames' ? { url: ev.url ?? state.source.url, ws: ev.ws ?? state.source.ws, pollMs: ev.pollMs ?? state.source.pollMs } : {}) };
       break;
     case 'reset':
       state.bleed.intensity = 0;
@@ -163,6 +163,19 @@ app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/config', (_req, res) => {
   res.json({ cameraPath: CAMERA_PATH, whep: `/mediamtx/${CAMERA_PATH}/whep`, whip: `/mediamtx/${CAMERA_PATH}/whip`, defaultSource: DEFAULT_SOURCE });
+});
+// image proxy for the external frame stream (lets WebGL use cross-origin frames)
+app.get('/api/frame-proxy', async (req, res) => {
+  const url = String(req.query.url || '');
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: 'http(s) url required' });
+  try {
+    const r = await fetch(url, { redirect: 'follow' });
+    const type = r.headers.get('content-type') || '';
+    if (!r.ok || !type.startsWith('image/')) return res.status(502).json({ error: `upstream ${r.status} ${type}` });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 15e6) return res.status(413).end();
+    res.set({ 'content-type': type, 'cache-control': 'no-store', 'access-control-allow-origin': '*' }).send(buf);
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 app.get('/api/state', (_req, res) => res.json({ state, presence: presence(), recent: recent.slice(-30) }));
 app.get('/api/schema', (_req, res) => res.json(schema));

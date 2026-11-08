@@ -254,7 +254,7 @@
     },
     {
       "title": "source",
-      "description": "Switch the laparoscope feed: sim = virtual abdomen (default), live = box camera, demo = sample clip, auto = live with demo fallback.",
+      "description": "Switch the laparoscope feed: sim = virtual abdomen (default), live = box camera, demo = sample clip, auto = live with demo fallback. frames = external frame stream (AI-restyled box camera): latest-frame URL + new-frame notifications, crossfaded.",
       "properties": {
         "type": {
           "const": "source"
@@ -262,6 +262,7 @@
         "mode": {
           "enum": [
             "sim",
+            "frames",
             "live",
             "demo",
             "auto"
@@ -270,11 +271,42 @@
         "whep": {
           "type": "string",
           "description": "Optional WHEP URL override (default: server's /mediamtx/<path>/whep proxy)."
+        },
+        "url": {
+          "type": "string",
+          "description": "frames: latest-frame image URL (JPEG/PNG)"
+        },
+        "ws": {
+          "type": "string",
+          "description": "frames: optional WebSocket that announces new frames"
+        },
+        "pollMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "frames: polling fallback interval (0 = off)"
         }
       },
       "required": [
         "type",
         "mode"
+      ]
+    },
+    {
+      "title": "frame",
+      "description": "A new frame is available on the external frame stream (optionally at a new URL). Displays re-fetch and crossfade.",
+      "properties": {
+        "type": {
+          "const": "frame"
+        },
+        "url": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type"
       ]
     },
     {
