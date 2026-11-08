@@ -104,7 +104,7 @@ let abd = null, abdLoading = null, autopilot = null, keyTools = null;
 function ensureAbdomen() {
   abdLoading ??= (async () => {
     const a = new Abdomen({
-      width: 1280, height: 720, fat: params.get('fat') !== '0', scopeAngle: Number(params.get('scopeAngle') || 0) * Math.PI / 180,
+      ...(([w, h]) => ({ width: w, height: h }))((params.get('simRes') || '1280x720').split('x').map(Number)), fat: params.get('fat') !== '0', scopeAngle: Number(params.get('scopeAngle') || 0) * Math.PI / 180,
       onEvent: (ev) => { if (!bus.send(ev)) apply({ ...ev, ts: Date.now(), from: 'sim' }); },
     });
     await a.init();

@@ -9,7 +9,7 @@ const dir = `${process.env.OUT || 'artifacts'}/abd-frames`; fs.rmSync(dir, { rec
 await fetch(`${BASE}/api/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"type":"reset"}' });
 const browser = await chromium.launch({ executablePath: fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-await page.goto(`${BASE}/?clean=1&manual=1&view=scope&autopilot=${variant}`);
+await page.goto(`${BASE}/?clean=1&manual=1&view=scope&simRes=960x540&autopilot=${variant}`);
 await page.waitForFunction(() => window.lapsim?.abd?.ready && window.lapsim.bus.connected, null, { timeout: 120000 });
 const per = Math.round(30 / fps);
 await page.evaluate((n) => window.lapsim.stepSim(n), Math.round(from * 30));
