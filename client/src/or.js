@@ -106,7 +106,7 @@ export function buildPatient(surfaceY) {
   ];
   const win = { x: 0.14, z: 0.02, rx: 0.2, rz: 0.13 }; // prepped abdominal window
   const pos = geo.attributes.position, colors = [];
-  const blue = new THREE.Color(0x3f7fb0), iod = new THREE.Color(0x7a4026), tmp = new THREE.Color();
+  const blue = new THREE.Color(0x2d6f9c), iod = new THREE.Color(0x7a4026), tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     let h = 0;
@@ -127,7 +127,8 @@ export function buildPatient(surfaceY) {
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const drape = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }));
+  const drape = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.88, sheen: 1, sheenRoughness: 0.55, sheenColor: new THREE.Color(0x8fc3e6), side: THREE.DoubleSide }));
+  drape.castShadow = true;
   drape.receiveShadow = true; drape.name = 'drape';
   g.add(drape);
   const heightAt = (x, z) => { let h = 0; for (const [bx, bz, rx, rz, bh] of blobs) { const q = ((x - bx) / rx) ** 2 + ((z - bz) / rz) ** 2; if (q < 1) h = Math.max(h, bh * Math.sqrt(1 - q)); } return surfaceY + 0.015 + h; };

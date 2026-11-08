@@ -3,7 +3,8 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { maybeEmulate } from './emulate.js';
-import { loadEnvironment, buildTable, buildPatient, buildSurgicalLights, buildTower, buildIVPole, buildBackTable, loadProps } from './or.js';
+import { buildPatient } from './or.js';
+import { buildRoom, setupLighting, loadProp, sceneStats, contactShadow, TABLE_POS, ROOM } from './room.js';
 import { LapMonitor } from './monitor.js';
 import { VitalsMonitor } from './vitals.js';
 import { ORAudio, Captions } from './audio.js';
@@ -22,8 +23,6 @@ const device = await maybeEmulate(params);
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: params.has('emulate') || params.has('manual') });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.9;
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
 renderer.xr.setFoveation(0.5);
@@ -41,33 +40,45 @@ controls.target.set(0.3, 1.35, -1.4);
 controls.enableDamping = true;
 controls.update();
 
-world.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.35));
 
 // ------------------------------------------------------------------ the OR
-const ENV_ROTATION = Number(params.get('envrot') ?? 1.55);
-loadEnvironment(renderer, scene, world, { rotation: ENV_ROTATION }).catch((e) => console.error('environment failed', e));
-
-const table = buildTable();
-table.group.position.set(0.1, 0, -0.75);
-world.add(table.group);
-const patient = buildPatient(table.surfaceY);
-patient.position.copy(table.group.position);
+// Room shell + lighting (room.js) and real CC-BY models from Sketchfab (assets-src/or-models.json).
+world.add(buildRoom());
+const lighting = setupLighting(renderer, scene, world).catch((e) => console.error('lighting failed', e));
+const TABLE_TOP = 0.74; // top of the OR table mattress (m)
+const patient = buildPatient(TABLE_TOP);
+patient.position.copy(TABLE_POS);
 world.add(patient);
-world.add(buildSurgicalLights());
-const tower = buildTower();
-tower.group.position.set(0.35, 0, -1.85);
-world.add(tower.group);
-const iv = buildIVPole(); iv.position.set(1.35, 0, -0.3); world.add(iv);
-const backTable = buildBackTable(); backTable.position.set(-1.5, 0, -0.55); backTable.rotation.y = Math.PI / 2; world.add(backTable);
-loadProps(world);
+const props = [
+  // [model, options]
+  ['bed', { size: 2.05, axis: 'x', pos: [TABLE_POS.x, 0, TABLE_POS.z], shadow: [2.4, 1.1] }],
+  ['orlamps', { size: 1.24, pos: [TABLE_POS.x, 3.0 - 1.24, TABLE_POS.z + 0.1], shadow: null, cast: false }],
+  ['pendant', { size: 1.8, pos: [1.75, 3.0 - 1.8, -1.75], rotY: Math.PI, shadow: null }],
+  ['anesthesia', { size: 1.45, pos: [1.95, 0, -0.75], rotY: -Math.PI / 2, shadow: [0.9, 1.0] }],
+  ['endocart', { size: 1.45, pos: [0.35, 0, -1.95], shadow: [0.8, 0.8] }],
+  ['roofmon', { size: 1.0, pos: [-1.1, 3.0 - 1.0, -2.2], rotY: 0.35, shadow: null, cast: false }],
+  ['ivstand', { size: 1.95, pos: [1.25, 0, -0.05], shadow: [0.6, 0.6] }],
+  ['suction', { size: 0.4, pos: [ROOM.x1 - 0.2, 0.95, -0.9], rotY: -Math.PI / 2, shadow: null }],
+  ['trolley', { size: 0.95, pos: [-1.35, 0, 0.35], rotY: Math.PI / 2, shadow: [1.2, 0.8] }],
+  ['cabinet', { size: 1.95, pos: [ROOM.x0 + 0.17, 0, -2.75], rotY: Math.PI / 2, shadow: [0.5, 1.6] }],
+  ['surgeon', { size: 1.8, pos: [-1.3, 0, -1.3], rotY: 0.9, shadow: [0.8, 0.8] }],
+  ['nurse', { size: 1.66, pos: [-2.05, 0, -0.1], rotY: 1.9, shadow: [0.7, 0.7] }],
+];
+const propsLoaded = Promise.allSettled(props.map(([name, o]) => loadProp(renderer, name, o).then((g) => { world.add(g); return g; })))
+  .then((r) => { r.forEach((x, i) => { if (x.status === 'rejected') console.warn('prop failed', props[i][0], x.reason); }); });
+// the surgical lights light the field: two spots from the lamp heads onto the abdomen
+for (const [dx, dz] of [[-0.45, 0.35], [0.5, -0.25]]) {
+  const sp = new THREE.SpotLight(0xfff8ee, 9, 3.2, 0.32, 0.55, 1.4);
+  sp.position.set(TABLE_POS.x + dx, 1.95, TABLE_POS.z + dz); sp.target.position.set(TABLE_POS.x + 0.12, TABLE_TOP + 0.2, TABLE_POS.z + 0.02);
+  world.add(sp, sp.target);
+}
 
 // main laparoscopy monitor on a boom arm above the tower, facing the surgeon
-const monitor = new LapMonitor({ width: Number(params.get('monitorWidth') || 1.6) });
-monitor.group.position.set(0.3, 1.66, -1.65);
-monitor.group.lookAt(0, 1.6, 0);
+// (a 32" surgical display enlarged for headset readability, on the endoscopy tower)
+const monitor = new LapMonitor({ width: Number(params.get('monitorWidth') || 1.2) });
+monitor.group.position.set(0.35, 1.55, -1.82);
+monitor.group.lookAt(0, 1.55, 0);
 world.add(monitor.group);
-const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.3, 12), new THREE.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.5 }));
-boom.position.set(0.3, 2.5, -1.8); world.add(boom);
 
 // In-VR controller cheat-sheet on a small stand at the surgeon's left
 {
@@ -83,7 +94,7 @@ boom.position.set(0.3, 2.5, -1.8); world.add(boom);
   });
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
-  panel.position.set(-0.62, 1.32, -0.42); panel.lookAt(0, 1.6, 0.3); panel.name = 'vr-controls-help';
+  panel.position.set(-0.85, 1.05, -0.15); panel.lookAt(0, 1.7, 0.3); panel.name = 'vr-controls-help';
   world.add(panel);
 }
 const captions = new Captions({ width: 1.4 });
@@ -92,11 +103,11 @@ monitor.group.add(captions.mesh);
 
 // anaesthesia vitals monitor on a pole at the head end
 const vitals = new VitalsMonitor({ width: 0.66 });
-vitals.group.position.set(1.45, 1.62, -1.2);
+vitals.group.position.set(1.5, 1.62, -1.45);
 vitals.group.lookAt(0, 1.55, 0);
 world.add(vitals.group);
 const vpole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.25, 12), new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.8, roughness: 0.3 }));
-vpole.position.set(1.47, 0.68, -1.23); world.add(vpole);
+vpole.visible = false; // the vitals monitor now sits on the ceiling pendant
 
 // ------------------------------------------------------------------ audio
 const audio = new ORAudio();
@@ -303,7 +314,8 @@ if (!scopeView) document.body.appendChild(vrButton);
 
 // Hooks for tests / debugging in the console
 window.lapsim = {
-  THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter,
+  THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter, propsLoaded,
+  stats() { return { scene: sceneStats(world), drawCalls: renderer.info.render.calls, frameTris: renderer.info.render.triangles }; },
   get abd() { return abd; }, get autopilot() { return autopilot; }, get keyTools() { return keyTools; }, setSource, poseToShaft,
   stepSim(n = 1, dt = 1 / 30) { for (let i = 0; i < n; i++) stepSim(dt); renderRequested = true; },
   snap() { monitor.snap(); vitals.snap(); },
