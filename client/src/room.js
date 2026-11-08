@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const ROOM = { x0: -3.4, x1: 3.8, z0: -3.9, z1: 2.3, h: 3.0 };
 export const TABLE_POS = new THREE.Vector3(0.1, 0, -0.75);
@@ -123,7 +124,27 @@ export function buildRoom() {
   const clock = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.18), new THREE.MeshBasicMaterial({ map: canvasTex(512, 154, (x) => { x.fillStyle = '#070707'; x.fillRect(0, 0, 512, 154); x.fillStyle = '#ff3b30'; x.font = '700 110px ui-monospace, monospace'; x.textAlign = 'center'; x.fillText('08:42', 256, 118); }), toneMapped: false }));
   clock.position.set(-0.6, 2.45, z0 + 0.02); g.add(clock);
   g.traverse((o) => { if (o.isMesh && o.name !== 'floor') o.receiveShadow = true; });
-  return g;
+  return mergeStatic(g);
+}
+
+/** Merge static meshes that share a material into one draw call each (transforms baked). */
+export function mergeStatic(group) {
+  group.updateMatrixWorld(true);
+  const buckets = new Map(), keep = [];
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    if (Array.isArray(o.material) || o.name === 'floor') { keep.push(o); return; }
+    const k = o.material.uuid; if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(o);
+  });
+  const out = new THREE.Group(); out.name = group.name;
+  for (const o of keep) { o.updateMatrixWorld(true); const c = o.clone(); c.matrixAutoUpdate = false; c.matrix.copy(o.matrixWorld); out.add(c); }
+  for (const list of buckets.values()) {
+    const geos = list.map((o) => { const g2 = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); for (const n of Object.keys(g2.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g2.deleteAttribute(n); return g2.applyMatrix4(o.matrixWorld); });
+    const merged = mergeGeometries(geos, false);
+    if (!merged) { list.forEach((o) => out.add(o.clone())); continue; }
+    const m = new THREE.Mesh(merged, list[0].material); m.receiveShadow = true; out.add(m);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ lighting
@@ -174,7 +195,12 @@ export async function loadProp(renderer, name, { size, axis = 'y', pos = [0, 0, 
     o.castShadow = cast; o.receiveShadow = true;
     if (!o.geometry.attributes.normal) { o.geometry.computeVertexNormals(); for (const m of [o.material].flat()) { m.flatShading = false; m.needsUpdate = true; } }
     const ms = Array.isArray(o.material) ? o.material : [o.material];
-    for (const m of ms) { if (m.map) m.map.anisotropy = 4; if ('envMapIntensity' in m) m.envMapIntensity = 1; }
+    for (const m of ms) {
+      if (m.map) m.map.anisotropy = 4;
+      if ('envMapIntensity' in m) m.envMapIntensity = 1;
+      // transmission (glass) forces an extra full-scene render pass: use cheap transparency on Quest
+      if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = 0.3; m.depthWrite = false; m.roughness = Math.min(m.roughness, 0.1); }
+    }
   });
   if (shadow) wrap.add(Object.assign(contactShadow(shadow[0], shadow[1]), {}));
   onLoad?.(wrap, scene);

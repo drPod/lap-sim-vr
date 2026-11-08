@@ -53,14 +53,14 @@ const props = [
   // [model, options]
   ['bed', { size: 2.05, axis: 'x', pos: [TABLE_POS.x, 0, TABLE_POS.z], shadow: [2.4, 1.1] }],
   ['orlamps', { size: 1.24, pos: [TABLE_POS.x + 0.1, 3.0 - 1.24, TABLE_POS.z - 0.15], rotY: 0.575, shadow: null, cast: false }],
-  ['pendant', { size: 1.8, pos: [1.75, 3.0 - 1.8, -1.75], rotY: Math.PI, shadow: null }],
+  ['pendant', { size: 1.8, pos: [1.75, 3.0 - 1.8, -1.75], rotY: Math.PI, shadow: null, cast: false }],
   ['anesthesia', { size: 1.45, pos: [1.95, 0, -0.75], rotY: -Math.PI / 2, shadow: [0.9, 1.0] }],
   ['endocart', { size: 1.45, pos: [0.35, 0, -1.95], shadow: [0.8, 0.8] }],
   ['roofmon', { size: 1.0, pos: [-1.1, 3.0 - 1.0, -2.2], rotY: 0.35, shadow: null, cast: false }],
-  ['ivstand', { size: 1.95, pos: [1.25, 0, -0.05], shadow: [0.6, 0.6] }],
+  ['ivstand', { size: 1.95, pos: [1.25, 0, -0.05], shadow: [0.6, 0.6], cast: false }],
   ['suction', { size: 0.4, pos: [ROOM.x1 - 0.2, 0.95, -0.9], rotY: -Math.PI / 2, shadow: null }],
   ['trolley', { size: 0.95, pos: [-1.35, 0, 0.35], rotY: Math.PI / 2, shadow: [1.2, 0.8] }],
-  ['cabinet', { size: 1.95, pos: [ROOM.x0 + 0.17, 0, -2.75], rotY: Math.PI / 2, shadow: [0.5, 1.6] }],
+  ['cabinet', { size: 1.95, pos: [ROOM.x0 + 0.17, 0, -2.75], rotY: Math.PI / 2, shadow: [0.5, 1.6], cast: false }],
   ['surgeon', { size: 1.8, pos: [-1.3, 0, -1.3], rotY: 0.9, shadow: [0.8, 0.8] }],
   ['nurse', { size: 1.66, pos: [-2.05, 0, -0.1], rotY: 1.9, shadow: [0.7, 0.7] }],
 ];
