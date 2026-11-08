@@ -55,8 +55,10 @@ export class Abdomen {
 
   /** Apply poses from any source: [{id, port, tool, yaw, pitch, roll, depth, jaw, energy}] */
   setPoses(list, external = true) {
-    for (const p of list) {
+    for (let p of list) {
       if (!p?.id) continue;
+      // a tracker may name tools by port ("epigastric"): drive the instrument already in that port
+      if (!this.poses[p.id] && p.port) { const ex = Object.keys(this.poses).find((k) => this.poses[k].port === p.port); if (ex) p = { ...p, id: ex }; }
       const cur = this.poses[p.id] || (this.poses[p.id] = { port: p.port || 'epigastric', tool: p.tool || 'grasper', yaw: 0, pitch: 0, roll: 0, depth: 0.08, jaw: 1 });
       Object.assign(cur, p);
       if (p.id !== 'scope' && (!this.inst[p.id] || this.state[p.id].type !== cur.tool)) this.spawnTool(p.id);

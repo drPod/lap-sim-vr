@@ -193,6 +193,8 @@ export class LapMonitor {
     if (origin) this.uniforms.bileOrigin.value.set(origin.x, 1 - origin.y);
   }
 
+  setTracker(text) { if (text !== this.trackerLabel) { this.trackerLabel = text; this.drawHud(); } }
+
   clearVideo(label = 'NO SIGNAL') { this.uniforms.hasVideo.value = 0; this.sourceLabel = label; this.drawHud(); }
 
   setBleed({ intensity, origin, pulsatile }) {
@@ -247,6 +249,12 @@ export class LapMonitor {
     c.fillStyle = 'rgba(0,0,0,0.45)'; c.fillRect(HUD_W - 190, HUD_H - 54, 174, 38);
     c.fillStyle = '#e8eef5'; c.fillText(d.toTimeString().slice(0, 8), HUD_W - 30, HUD_H - 35);
     c.textAlign = 'left';
+    if (this.trackerLabel) { // box tracker streaming
+      c.font = '700 24px system-ui, sans-serif'; const w = c.measureText(this.trackerLabel).width + 44;
+      c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(HUD_W - w - 16, HUD_H - 100, w, 36);
+      c.fillStyle = '#3ddc84'; c.beginPath(); c.arc(HUD_W - w + 4, HUD_H - 82, 7, 0, 7); c.fill();
+      c.fillStyle = '#e8eef5'; c.fillText(this.trackerLabel, HUD_W - w + 18, HUD_H - 82);
+    }
     if (this.uniforms.hasVideo.value < 0.5) {
       c.font = '700 64px system-ui, sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(255,255,255,0.7)';
       c.fillText(this.sourceLabel === 'NO SIGNAL' ? 'NO SIGNAL' : 'CONNECTING…', HUD_W / 2, HUD_H / 2); c.textAlign = 'left';

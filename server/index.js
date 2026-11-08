@@ -80,6 +80,16 @@ function applyToState(ev) {
   }
 }
 
+// ---------------------------------------------------------------- tracker liveness
+// Poses from role "hardware" (WebSocket) or UDP count as the box tracker; everyone gets a
+// once-a-second {type:"tracker", live, hz, tools} status for the HUD / director panel.
+const tracker = { count: 0, last: 0, tools: [], live: false };
+setInterval(() => {
+  const live = Date.now() - tracker.last < 1000;
+  if (live || tracker.live) broadcast({ type: 'tracker', live, hz: tracker.count, tools: live ? tracker.tools : [], ts: Date.now() });
+  tracker.live = live; tracker.count = 0;
+}, 1000);
+
 // ---------------------------------------------------------------- event bus
 const clients = new Map(); // ws -> { role, name }
 const recent = []; // last 100 events, for the panel log
@@ -103,6 +113,7 @@ export function publish(raw, from = 'api') {
   if (raw.type === 'hello') return { ok: false, error: 'hello is only valid on a websocket' };
   if (raw.type === 'tools') { // high-rate pose stream: no state, no log, displays only
     broadcast({ ...raw, from }, (c) => c.role === 'display' || c.role === 'observer');
+    if (from === 'hardware' || from === 'tracker') { tracker.count++; tracker.last = Date.now(); tracker.tools = raw.tools.map((t) => t.port || t.id); }
     return { ok: true };
   }
   const ev = { ...raw, id: randomUUID(), ts: Date.now(), from };
@@ -186,6 +197,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
   clients.set(ws, { role: 'observer', name: req.socket.remoteAddress });
   send(ws, { type: 'state', state, ts: Date.now() });
+  send(ws, { type: 'tracker', live: Date.now() - tracker.last < 1000, hz: 0, tools: tracker.tools, ts: Date.now() });
   ws.on('message', (data) => {
     let msg;
     try { msg = JSON.parse(data.toString()); } catch { return send(ws, { type: 'error', error: 'not JSON' }); }

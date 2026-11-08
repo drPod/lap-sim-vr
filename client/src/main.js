@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { maybeEmulate } from './emulate.js';
 import { buildPatient } from './or.js';
+import { OutsideInstruments, abdomenToWorld } from './outside.js';
 import { buildRoom, setupLighting, loadProp, sceneStats, contactShadow, TABLE_POS, ROOM } from './room.js';
 import { LapMonitor } from './monitor.js';
 import { VitalsMonitor } from './vitals.js';
@@ -49,6 +50,9 @@ const TABLE_TOP = 0.74; // top of the OR table mattress (m)
 const patient = buildPatient(TABLE_TOP);
 patient.position.copy(TABLE_POS);
 world.add(patient);
+for (const p of Object.values(patient.userData.ports)) p.visible = false; // trocars now come from outside.js
+// instruments + trocars in the room, in the abdomen frame mapped onto the belly (see outside.js)
+const outside = new OutsideInstruments(world, abdomenToWorld(new THREE.Vector3(TABLE_POS.x + 0.12, TABLE_TOP + 0.05, TABLE_POS.z)));
 const props = [
   // [model, options]
   ['bed', { size: 2.05, axis: 'x', pos: [TABLE_POS.x, 0, TABLE_POS.z], shadow: [2.4, 1.1] }],
@@ -198,7 +202,11 @@ function apply(ev) {
     case 'say': captions.push(ev.speaker, ev.text); audio.say(ev); break;
     case 'source': setSource(ev.mode, ev.whep); break;
     case 'bile': monitor.setBile(ev); break;
-    case 'tools': if (abd && ev.from !== 'display') abd.setPoses(ev.tools); break;
+    case 'tools':
+      if (ev.from === 'hardware' || ev.from === 'tracker') { trackerSeen = performance.now(); trackerCount++; }
+      if (abd && ev.from !== 'display') abd.setPoses(ev.tools);
+      break;
+    case 'tracker': showTracker(ev); break;
     case 'sim':
       if (ev.action === 'reset' && abd) { abdLoading = null; abd = null; autopilot = null; setSource(sourceMode); }
       if (ev.action === 'autopilot' && abd) { abd.lastExternal = 0; autopilot = new Autopilot(abd, { variant: ev.target }); }
@@ -241,25 +249,30 @@ renderer.xr.addEventListener('sessionstart', () => { audio.unlock(); video.resum
 // Without the physical tracker, the Quest controllers act as instrument handles: each one
 // pivots through a virtual trocar on the draped patient (left hand -> right-subcostal port,
 // right hand -> epigastric port). Trigger closes the jaws, A/X = energy, B/Y = next instrument.
+let trackerSeen = -1e9, trackerCount = 0, trackerHz = 0;
+setInterval(() => { trackerHz = trackerCount; trackerCount = 0; if (performance.now() - trackerSeen > 1000) showTracker({ live: false, hz: 0, tools: [] }); }, 1000); // live status + rate come from the server's 1 Hz 'tracker' event
+function showTracker(t) {
+  const el = document.getElementById('trk-text'), dot = document.getElementById('trk-dot');
+  const txt = t.live ? `TRACKER LIVE · ${t.hz} Hz${t.tools?.length ? ' · ' + t.tools.join(', ') : ''}` : 'NO TRACKER (controllers / keyboard drive the tools)';
+  if (el) { el.textContent = txt; dot.className = `dot ${t.live ? 'ok' : 'bad'}`; }
+  monitor.setTracker?.(t.live ? `TRACKER ${t.hz} Hz` : null);
+}
 const handPorts = { left: 'rsc', right: 'epigastric' };
 const btnPrev = { left: false, right: false };
 function controllerTools() {
   const session = renderer.xr.getSession();
-  if (!session || !abd || autopilot || performance.now() - abd.lastExternal < 1500 || params.get('controllerTools') === '0') return;
+  if (!session || !abd || autopilot || performance.now() - trackerSeen < 1000 || performance.now() - abd.lastExternal < 1000 || params.get('controllerTools') === '0') return;
   const poses = [];
   const H = new THREE.Vector3(), T = new THREE.Vector3();
   for (const src of session.inputSources) {
     const hand = src.handedness; if (!handPorts[hand] || !src.gamepad) continue;
     renderer.xr.getControllerGrip([...session.inputSources].indexOf(src)).getWorldPosition(H);
-    patient.userData.ports[handPorts[hand]].getWorldPosition(T);
-    const dir = T.clone().sub(H); const dist = dir.length(); dir.normalize();
-    // physical port frame: straight down into the abdomen; right = OR world X rotated with the room
-    const d = new THREE.Vector3(0, -1, 0), r = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), world.rotation.y), u = new THREE.Vector3().crossVectors(r, d);
+    world.worldToLocal(H); // controller handle in OR coordinates -> pose through the trocar (exact inverse of outside.js)
+    const fp = outside.poseFromHandle(handPorts[hand], H);
     const b = src.gamepad.buttons, id = hand === 'left' ? 'left' : 'right';
     const cur = abd.poses[id];
     const next = b[5]?.pressed; if (next && !btnPrev[hand]) cur.tool = TOOL_TYPES[(TOOL_TYPES.indexOf(cur.tool) + 1) % TOOL_TYPES.length]; btnPrev[hand] = next;
-    poses.push({ id, port: handPorts[hand], tool: cur.tool, yaw: Math.atan2(dir.dot(r), dir.dot(d)), pitch: Math.asin(THREE.MathUtils.clamp(dir.dot(u), -1, 1)),
-      roll: 0, depth: THREE.MathUtils.clamp(0.36 - dist, 0.02, 0.2), jaw: 1 - (b[0]?.value ?? 0), energy: !!b[4]?.pressed });
+    poses.push({ id, port: handPorts[hand], tool: cur.tool, ...fp, roll: 0, jaw: 1 - (b[0]?.value ?? 0), energy: !!b[4]?.pressed });
   }
   if (poses.length) abd.setPoses(poses, false);
 }
@@ -294,6 +307,7 @@ renderer.setAnimationLoop((time) => {
   vitals.update(dt, t);
   captions.update();
   if (helpPanel && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) helpPanel.update();
+  if (abd) outside.update(abd.poses);
   if (abd && sourceMode === 'sim') {
     if (!manualSim) stepSim(dt);
     abd.render(renderer);
@@ -316,6 +330,7 @@ if (!scopeView) document.body.appendChild(vrButton);
 window.lapsim = {
   THREE, renderer, scene, camera, controls, world, monitor, vitals, captions, video, bus, device, apply, recenter, propsLoaded,
   stats() { return { scene: sceneStats(world), drawCalls: renderer.info.render.calls, frameTris: renderer.info.render.triangles }; },
+  outside, get trackerLive() { return performance.now() - trackerSeen < 1000; },
   get abd() { return abd; }, get autopilot() { return autopilot; }, get keyTools() { return keyTools; }, setSource, poseToShaft,
   stepSim(n = 1, dt = 1 / 30) { for (let i = 0; i < n; i++) stepSim(dt); renderRequested = true; },
   snap() { monitor.snap(); vitals.snap(); },

@@ -157,6 +157,19 @@ Useful URL flags: `?source=demo|live|auto`, `?whep=<url>` (WHEP override), `?mon
 - **Complications** (`index.js`): cutting the artery proximal to any clip produces a pulsatile bleed + warning + falling BP + attending voice. Cutting the duct without stump clips gives a bile leak. Cutting or burning the CBD gives a critical warning. They are sent as ordinary events, so the director panel, overlays and future agents see them.
 - **Rendering:** an HDR render target, shown on the OR monitor through the existing overlay shader (ACES tonemapping there). `?scopeAngle=30` gives a 30° scope; `?fat=0` removes the veil.
 
+### Box tracker → instruments in the room
+
+When `tools` poses arrive from role `hardware` (WebSocket) or over UDP:
+- The OR shows each instrument as a long laparoscopic instrument entering the patient through a trocar on the drape, pivoting at the trocar exactly as the pose says (`client/src/outside.js`). The lap monitor shows the same instruments inside.
+- The tracker overrides the controller-as-instrument mode, which comes back about 1 s after the stream stops.
+- Tools are matched by `port`, so a tracker can use the port names (`epigastric`, `rsc`, `raa`) as ids.
+- The server broadcasts `{type:"tracker", live, hz, tools}` once a second. It is shown as **TRACKER LIVE · N Hz / NO TRACKER** in the HUD, as a pill in the director panel, and as a badge on the lap monitor.
+- `node tests/tracker.mjs` runs the box tracker's protocol (hardware client, 30 Hz, sweeping left/right then in/out) and captures the OR and scope views.
+
+**Frame mapping.** The drape trocars are the abdomen's `PORTS` mapped rigidly (no mirror) onto the belly, so the spacing matches exactly (epigastric↔umbilical 17.5 cm). From the surgeon's standing position, abdomen +x maps to the surgeon's right, +z (anterior) to up, and +y ("head" on the monitor) to away from the surgeon. Left/right therefore agrees between the room and the monitor.
+
+Known anatomical issue, to fix in one go later: the abdomen frame is mirrored left/right relative to real anatomy (rsc/raa sit at +x), and its head axis points across the table rather than along the placeholder patient. Fixing both means changing `PORTS` plus the anatomy transform in `abdomen/anatomy.js` and the matrix in `outside.js` together, and re-calibrating the box.
+
 ### Tool-pose interface (for the box tracker)
 
 Every pose source produces the same per-instrument **fulcrum** pose: the instrument pivots through its trocar.

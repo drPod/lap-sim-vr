@@ -12,6 +12,7 @@ const bus = connectEvents({
   role: 'director', name: 'control-panel',
   onStatus: (ok) => { const c = $('conn'); c.className = `pill ${ok ? 'ok' : 'bad'}`; c.textContent = ok ? 'connected' : 'reconnecting…'; },
   onEvent: (ev) => {
+    if (ev.type === 'tracker') { const t = $('tracker'); t.className = `pill ${ev.live ? 'ok' : 'bad'}`; t.textContent = ev.live ? `TRACKER LIVE · ${ev.hz} Hz · ${ev.tools.join(', ')}` : 'NO TRACKER'; return; }
     if (ev.type === 'presence') {
       const r = ev.roles; $('presence').textContent = `headsets/displays: ${r.display || 0} · directors: ${r.director || 0} · agents: ${r.agent || 0} · hardware: ${r.hardware || 0}`;
     } else if (ev.type === 'history') ev.events.forEach((e) => line(fmt(e)));
